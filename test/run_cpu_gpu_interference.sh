@@ -1,43 +1,39 @@
 #!/bin/bash
 
-# Ensure binary exists
-if [ ! -f "../build/meminterf" ]; then
-    echo "meminterf not found. Building..."
+# Ensure binaries exist
+if [ ! -f "../build/meminterf" ] || [ ! -f "../build/gpu_task" ]; then
+    echo "Binaries not found. Building..."
     cd .. && make && cd test
 fi
 
-echo "Checking for vkcube..."
-if ! command -v vkcube &> /dev/null; then
-    echo "Warning: 'vkcube' could not be found."
-    echo "To test deliberate CPU-GPU interference with a real GPU workload, please install it:"
-    echo "  sudo apt install vulkan-tools"
-    echo "Falling back to CPU-only interference run..."
-    ./run_benchmark.sh
-    exit 0
-fi
-
-echo "=== GPU Workload with NO CPU Interference ==="
-echo "Launching vkcube in the background..."
-# We launch vkcube to stress the GPU. We redirect output to null.
-vkcube > /dev/null 2>&1 &
-VKCUBE_PID=$!
-
-../src/profiler.sh 5 > gpu_only_metrics.csv
-cat gpu_only_metrics.csv
+echo "=================================================="
+echo "    ISOLATED RUN (GPU ONLY)                       "
+echo "=================================================="
+../build/gpu_task
 echo ""
 
-echo "=== GPU Workload WITH CPU Memory Interference ==="
-echo "Launching CPU memory interferer..."
-../build/meminterf 5 > /dev/null 2>&1 &
-INTERFERER_PID=$!
+echo "=================================================="
+echo "    INTERFERENCE RUN (GPU + CPU MEMORY STRESS)    "
+echo "=================================================="
+echo "Starting CPU memory stressors in background (Saturating 3 CPU Cores)..."
+# We spawn 3 instances of the interferer to fully saturate the Pi 5's LPDDR4X bandwidth
+../build/meminterf 20 > /dev/null &
+PID1=$!
+../build/meminterf 20 > /dev/null &
+PID2=$!
+../build/meminterf 20 > /dev/null &
+PID3=$!
 
-../src/profiler.sh 5 > cpu_gpu_interference_metrics.csv
-cat cpu_gpu_interference_metrics.csv
+# Give the interferers a moment to spin up to full bandwidth
+sleep 1
+
+# Run the GPU task again, while CPU is saturating memory
+../build/gpu_task
+
+# Stop the interferers
+kill $PID1 $PID2 $PID3 2>/dev/null
+wait $PID1 $PID2 $PID3 2>/dev/null
+
 echo ""
-
-# Clean up
-kill $VKCUBE_PID 2>/dev/null
-wait $INTERFERER_PID 2>/dev/null
-
-echo "Benchmarking complete. Results saved to gpu_only_metrics.csv and cpu_gpu_interference_metrics.csv."
-
+echo "Done! Compare the 'Total GPU time' between the two runs."
+echo "If memory interference is happening, the second run will take noticeably longer."

@@ -15,7 +15,7 @@ if [ $? -eq 0 ]; then
     echo "Deployment successful!"
     echo ""
     echo "To run on the Pi, you can execute:"
-    echo "  ssh $TARGET 'cd $DEST_DIR && make && cd test && ./run_benchmark.sh'"
+    echo "  ssh $TARGET 'sudo apt-get install -y libegl1-mesa-dev libgles2-mesa-dev && cd $DEST_DIR && make && cd test && ./run_cpu_gpu_interference.sh'"
 else
     echo ""
     echo "Deployment failed. Did you run ./setup_ssh.sh first?"
