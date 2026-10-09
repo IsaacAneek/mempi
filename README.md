@@ -4,16 +4,19 @@ This project contains a basic profiling and benchmarking suite designed to study
 
 ## Project Structure
 
-*   `setup_ssh.sh`: Script to automate passwordless SSH setup to the Raspberry Pi.
-*   `deploy.sh`: Script to push the codebase to the remote Raspberry Pi via `rsync`.
+*   `deploy/`: Contains utility scripts for pushing code from a host machine to the Raspberry Pi.
+    *   `setup_ssh.sh`: Script to automate passwordless SSH setup to the Raspberry Pi.
+    *   `deploy_to_pi.sh`: Script to push the codebase to the remote Raspberry Pi via `rsync`.
+*   `run_on_pi.sh`: Master execution script designed to be run directly on the Raspberry Pi to automate compiling and benchmarking.
 *   `src/`: Contains the source code for the memory interferer and profiling scripts.
     *   `meminterf.c`: A C program that continuously performs memory writes to saturate CPU-to-DRAM bandwidth.
+    *   `cpu_spinner.c`: A C program that maxes CPU usage purely in registers without generating DRAM traffic.
     *   `gpu_task.c`: A headless OpenGL ES 3.1 compute shader to generate deliberate GPU memory workload.
     *   `profiler.sh`: A shell script to log system metrics (CPU, Memory, Temp, GPU Clock).
 *   `build/`: The destination directory for the compiled binaries.
 *   `test/`: Scripts to run different benchmarking scenarios.
     *   `run_benchmark.sh`: Runs a baseline memory interference test.
-    *   `run_cpu_gpu_interference.sh`: Runs a deliberate CPU-GPU interference test (requires a GPU workload).
+    *   `run_cpu_gpu_interference.sh`: Runs a deliberate CPU-GPU interference test.
 
 ## What Can Be Profiled on Raspberry Pi 5
 
@@ -33,8 +36,8 @@ Unlike discrete NVIDIA GPUs (which provide comprehensive profiling tools like `n
 
 ### 1. SSH Deployment (If running from a host machine)
 To automatically push this code to a remote Raspberry Pi, use the provided scripts:
-1. Make your SSH passwordless: `./setup_ssh.sh`
-2. Sync the code: `./deploy.sh`
+1. Make your SSH passwordless: `./deploy/setup_ssh.sh`
+2. Sync the code: `./deploy/deploy_to_pi.sh`
 
 ### 2. Prerequisites (On the Raspberry Pi)
 Ensure you have a C compiler, `make`, `bc`, and the EGL/GLES development headers installed to compile the headless GPU task.
