@@ -7,9 +7,21 @@ if [ ! -f "../build/meminterf" ] || [ ! -f "../build/gpu_task" ]; then
 fi
 
 echo "=================================================="
-echo "    ISOLATED RUN (GPU ONLY)                       "
+echo "    ISOLATED RUN (GPU + PURE CPU MATH)"
 echo "=================================================="
+echo "Starting pure CPU math spinners to boost SoC clocks (Zero Memory Traffic)..."
+../build/cpu_spinner 20 > /dev/null &
+PID1=$!
+../build/cpu_spinner 20 > /dev/null &
+PID2=$!
+../build/cpu_spinner 20 > /dev/null &
+PID3=$!
+
+sleep 1
 ../build/gpu_task
+
+kill $PID1 $PID2 $PID3 2>/dev/null
+wait $PID1 $PID2 $PID3 2>/dev/null
 echo ""
 
 echo "=================================================="
