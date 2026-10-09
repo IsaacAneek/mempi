@@ -150,7 +150,12 @@ if (out_ptr) {
 
 ## How this proves Memory Interference
 
-Because this shader is almost entirely constrained by how fast it can move data in and out of the GPU (`out_data[i] = in_data[i]`), it heavily relies on the shared System RAM (LPDDR4) bandwidth.
+Because this shader is almost entirely constrained by how fast it can move data in and out of the GPU (`out_data[base] = in_data[base]`), it heavily relies on the shared System RAM (LPDDR4X) bandwidth.
 
 When the CPU runs `meminterf.c` (which spams `memset`), the CPU and GPU collide at the memory controller. By recording the `Total GPU time` of this script in isolation versus when the CPU is attacking the memory, we gain concrete, measurable proof of the memory latency degradation discussed in the HeSoC-mark paper.
+
+**Beating the DVFS Mask:**
+One critical element of our benchmark is the `cpu_spinner.c` program. Modern SoCs (like the Pi 5) dynamically downclock memory when the CPU is idle. If we ran `gpu_task.c` while the CPU was idle, the memory would be slow. If we then ran it with `meminterf.c`, the CPU load would trigger a massive clock boost, making the GPU run faster despite the interference!
+
+To fix this, during the "Isolated" run, we use `cpu_spinner.c` to max out 3 CPU cores using pure register math. This tricks the firmware into boosting the clocks to maximum, but without generating a single byte of DRAM traffic. This ensures both the Isolated Run and the Interference Run operate at the exact same clock speed, perfectly isolating the physical memory latency degradation.
 

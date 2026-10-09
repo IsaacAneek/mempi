@@ -68,8 +68,9 @@ Finally, the benchmark ran flawlessly. However, the isolated GPU run took **4.32
 **The Debugging Process:**
 1. Did we saturate the memory bandwidth? A single CPU `memset` consumes ~5 GB/s. The GPU consumes ~6 GB/s. The Pi 5's LPDDR4X bandwidth is ~17 GB/s. We were only using 11 GB/s, meaning no collision occurred.
 2. So why did it get faster? **Dynamic Voltage and Frequency Scaling (DVFS)**.
-3. During the isolated GPU run, the CPU was idle (0% load), so the Pi 5's power governor kept the memory and internal bus clocks in a low-power, slow state.
-4. When we turned on the CPU interferer, the CPU hit 100% load. The power governor panicked and "boosted" the RAM and bus clocks to maximum. The memory sped up so much that it completely overcame the interference penalty, inadvertently accelerating the GPU.
+3. During the isolated GPU run, the CPU was idle (0% load), so the Pi 5's firmware kept the memory and internal bus clocks in a low-power, slow state.
+4. When we turned on the CPU interferer, the CPU hit 100% load. The firmware panicked and "boosted" the RAM and bus clocks to maximum. The memory sped up so much that it completely overcame the interference penalty, inadvertently accelerating the GPU.
+5. Attempting to lock the Linux CPU `scaling_governor` to `performance` failed, as the Broadcom firmware overrides it and scales DRAM independently based on physical CPU load.
 
-**The Fix:** We realized a single CPU core wasn't enough. We rewrote the bash script to spawn **3 concurrent instances** of `meminterf` in the background, unleashing a massive 3-core attack that successfully hits the 17 GB/s bandwidth ceiling and genuinely starves the GPU.
+**The Fix:** We created a brand new C program, `cpu_spinner.c`, which does pure mathematical additions inside the CPU registers without touching DRAM. During the "Isolated GPU" run, we spawn 3 of these spinners in the background. The firmware sees 100% CPU load and boosts the clocks to maximum, but the DRAM bandwidth remains completely free for the GPU. This "tricks" the Pi 5 into running both benchmarks at peak hardware speeds, finally exposing the true memory interference.
 
