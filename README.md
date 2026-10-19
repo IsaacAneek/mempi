@@ -8,12 +8,13 @@ interference, and records at the same time:
 - DVFS / thermal / throttling data (`dvfs.txt` plus `rpi5-dvfs-logs/`)
 - the `gpu_task` output (`gpu_task.txt`)
 
-Each experiment writes into its own folder, `/data/<name>/`, for example `/data/4mr`
-(4 MB block, read) or `/data/8mw` (8 MB block, write).
+Each experiment writes into its own folder, `data/<name>/` inside the project root, for example `data/4mr`
+(4 MB block, read) or `data/8mw` (8 MB block, write). Set `DATA_DIR` to put them somewhere else, e.g. `/data`.
+
+Put your existing `rpi5-dvfs-monitor.sh` into `scripts/`. Alternatively, leave it elsewhere
+and set `DVFS_SCRIPT=/path/to/rpi5-dvfs-monitor.sh`.
 
 ## 2. Install dependencies
-
-set `DVFS_SCRIPT=/path/to/rpi5-dvfs-monitor.sh`.
 
 ```bash
 sudo apt update
@@ -65,8 +66,8 @@ chmod +x monitor_interference.sh scripts/*.sh
 
 ## 6. Run
 
-Run from the project root, so `./build/gpu_task` resolves. Use `sudo` so it can write to
-`/data` and drop the page cache between runs.
+Run from the project root, so `./build/gpu_task` resolves. Use `sudo` so it can drop the
+page cache between runs (results go to `./data/`, which is created automatically).
 
 ```bash
 # a couple of experiments first
@@ -145,7 +146,7 @@ experiments use `stress-ng` fault/mmap/vm stressors and are skipped if it isn't 
 ## 8. Output files
 
 ```
-/data/4mr/
+data/4mr/
 ├── gpu_task.txt          stdout/stderr of gpu_task
 ├── sysbench.txt          stdout/stderr of the stressor (per-second report lines)
 ├── v3d_counters.txt      V3D counter samples
@@ -186,7 +187,7 @@ pass them through with `sudo -E` or `sudo VAR=value ./monitor_interference.sh`.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DATA_DIR` | `/data` | where result folders are created |
+| `DATA_DIR` | `<project root>/data` | where result folders are created |
 | `GPU_CMD` | `./build/gpu_task` | gpu_task command, including arguments |
 | `GPU_TIMEOUT` | `900` | seconds before a gpu_task run is killed (exit code 124) |
 | `GPU_CPUS` / `STRESS_CPUS` | empty | `taskset` CPU lists, e.g. `GPU_CPUS=0 STRESS_CPUS=1-3` |
@@ -230,7 +231,8 @@ bash scripts/run_gpu_task.sh                                     # just gpu_task
 | Symptom | Fix |
 |---|---|
 | `ERROR: 'sysbench' not found` | `sudo apt install sysbench` |
-| `ERROR: cannot write /data` | run with `sudo`, or `sudo mkdir /data && sudo chown $USER /data` |
+| `ERROR: cannot write <DATA_DIR>` | check permissions of the project folder, or set `DATA_DIR` to a writable path |
+| Result files are owned by root | you ran with `sudo`; fix with `sudo chown -R $USER:$USER data` |
 | `rpi5-dvfs-monitor.sh not found` | copy it to `scripts/` or set `DVFS_SCRIPT` |
 | `make` fails with `drm/v3d_drm.h: No such file` | `sudo apt install libdrm-dev` |
 | `v3d_counters.txt` says `PERFMON_SET_GLOBAL failed` | another process may hold the global perfmon (EBUSY), or the kernel lacks the ioctl; send the first lines of the file for diagnosis |
