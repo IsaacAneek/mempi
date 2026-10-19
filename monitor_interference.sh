@@ -10,7 +10,7 @@
 #   scripts/write_meta.sh       command lines, timings, temps    -> meta.txt
 # Experiments are defined in scripts/experiments.sh; shared settings are in scripts/lib.sh.
 #
-# Results: $DATA_DIR/<name>/   (DATA_DIR defaults to /data; e.g. /data/4mr, /data/8mw)
+# Results: $DATA_DIR/<name>/   (DATA_DIR defaults to <project>/data; e.g. data/4mr, data/8mw)
 #
 # usage: ./monitor_interference.sh [options]
 #   -l          list experiments and exit
@@ -122,6 +122,7 @@ run_experiment() {
     local temp_before; temp_before="$(soc_temp)"
 
     # 1) monitors
+    echo "    [start] DVFS profiler + V3D counter monitor"
     start_bg DVFS_PID "$out/dvfs.txt"          bash "$SCRIPTS_DIR/run_dvfs.sh" "$out"
     start_bg V3D_PID  "$out/v3d_counters.txt"  bash "$SCRIPTS_DIR/run_v3d_monitor.sh"
 
@@ -134,15 +135,18 @@ run_experiment() {
         echo "(baseline: no interference)" > "$out/sysbench.txt"
     fi
 
+    echo "    [warmup] ${WARMUP}s with stressor running"
     sleep "$WARMUP"
 
     # 3) GPU workload (foreground)
     local t_gpu0 t_gpu1 gpu_rc
     t_gpu0="$(date +%s.%N)"
+    echo "    [gpu] running gpu_task (timeout ${GPU_TIMEOUT}s, output -> $out/gpu_task.txt)"
     bash "$SCRIPTS_DIR/run_gpu_task.sh" > "$out/gpu_task.txt" 2>&1
     gpu_rc=$?
     t_gpu1="$(date +%s.%N)"
 
+    echo "    [stop] gpu_task exited (rc=$gpu_rc); cooldown ${COOLDOWN}s, then stopping stressor and monitors"
     sleep "$COOLDOWN"
     stop_all
 

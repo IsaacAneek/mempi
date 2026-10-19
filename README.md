@@ -1,4 +1,4 @@
-# GPU interference monitoring on Raspberry Pi 5
+# 1. GPU interference monitoring on Raspberry Pi 5
 
 Runs `./build/gpu_task` while a CPU/memory stressor (mostly `sysbench`) creates
 interference, and records at the same time:
@@ -11,38 +11,9 @@ interference, and records at the same time:
 Each experiment writes into its own folder, `/data/<name>/`, for example `/data/4mr`
 (4 MB block, read) or `/data/8mw` (8 MB block, write).
 
----
-
-## 1. Project layout
-
-Copy these files into your project root, next to your existing `src/` and `build/`:
-
-```
-<project root>/
-├── Makefile                    <- merged Makefile (your targets + V3D tools)
-├── monitor_interference.sh     <- orchestrator (the only thing you run)
-├── src/
-│   ├── gpu_task.c              (yours)
-│   ├── meminterf.c             (yours)
-│   ├── cpu_spinner.c           (yours)
-│   ├── v3d_perfmon_monitor.c   V3D counter sampler
-│   └── v3d_counters.c          lists the counters the kernel exposes
-├── scripts/
-│   ├── lib.sh                  shared settings (all env-var defaults live here)
-│   ├── experiments.sh          the experiment matrix
-│   ├── run_stress.sh           launches sysbench / stress-ng
-│   ├── run_gpu_task.sh         launches gpu_task
-│   ├── run_v3d_monitor.sh      launches the V3D counter sampler
-│   ├── run_dvfs.sh             launches your DVFS profiler
-│   ├── write_meta.sh           writes meta.txt for each experiment
-│   └── rpi5-dvfs-monitor.sh    <- your DVFS script, copy it here
-└── build/                      <- build output (created by make)
-```
-
-Put your existing `rpi5-dvfs-monitor.sh` into `scripts/`. Alternatively, leave it elsewhere
-and set `DVFS_SCRIPT=/path/to/rpi5-dvfs-monitor.sh`.
-
 ## 2. Install dependencies
+
+set `DVFS_SCRIPT=/path/to/rpi5-dvfs-monitor.sh`.
 
 ```bash
 sudo apt update
@@ -132,7 +103,7 @@ and resume. Use `-F` to redo them.
 ### What happens in each experiment
 
 1. Run `run_stress.sh --check` (skips the experiment if it can't run, e.g. not enough RAM or `stress-ng` is missing).
-2. Drop page cache (root only) and wait for the SoC to cool to `SETTLE_TEMP` (default 55 C).
+2. Drop page cache (root only) and wait until the SoC is at or below `SETTLE_TEMP` (default 70 C, at most `SETTLE_MAX` = 60 s).
 3. Start the DVFS profiler and the V3D counter sampler.
 4. Start the stressor (not for `baseline`).
 5. Wait `WARMUP` seconds (default 3).
@@ -228,8 +199,8 @@ pass them through with `sudo -E` or `sudo VAR=value ./monitor_interference.sh`.
 | `SB_REPORT` | `1` | sysbench `--report-interval` |
 | `SB_MAX_TIME` | `3600` | safety cap on stressor run time |
 | `WARMUP` / `COOLDOWN` | `3` / `3` | seconds before / after gpu_task |
-| `SETTLE_TEMP` / `SETTLE_MAX` | `55` / `180` | cool-down target (C) and max wait; `SETTLE_TEMP=` disables |
 | `DROP_CACHES` | `1` | drop page cache before each run (root only) |
+| `SETTLE_TEMP` / `SETTLE_MAX` | `70` / `60` | temperature target (C) and max wait in seconds before each run; `SETTLE_TEMP=` disables the wait |
 
 Examples:
 
@@ -237,8 +208,8 @@ Examples:
 # gpu_task with arguments, pinned to core 0; stressors on cores 1-3
 sudo GPU_CMD="./build/gpu_task --size 1024" GPU_CPUS=0 STRESS_CPUS=1-3 ./monitor_interference.sh -c dram_stream
 
-# faster sampling, no cool-down wait
-sudo V3D_INTERVAL_MS=250 SETTLE_TEMP= ./monitor_interference.sh -f '^8mw$'
+# faster V3D sampling
+sudo V3D_INTERVAL_MS=250 ./monitor_interference.sh -f '^8mw$'
 ```
 
 ## 10. Run the pieces on their own
@@ -268,12 +239,12 @@ bash scripts/run_gpu_task.sh                                     # just gpu_task
 | Experiment skipped: not enough free RAM | large blocks need `block x threads` of free RAM (up to 70% of `MemAvailable`); lower `SB_THREADS` or free memory |
 | Experiment skipped: `stress-ng` not installed | `sudo apt install stress-ng` |
 | `gpu_exit_code: 124` in `meta.txt` | `gpu_task` hit `GPU_TIMEOUT`; raise it |
-| SoC "did not cool" message | raise `SETTLE_TEMP`, or set `SETTLE_TEMP=` to skip the wait |
+| `[settle] ... waiting` repeats on every run | your idle temperature is above `SETTLE_TEMP`; raise it (e.g. `SETTLE_TEMP=75`) or disable with `SETTLE_TEMP=` |
 | Want to repeat a finished experiment | add `-F`, or delete its `DONE` file |
 
 ## 12. Notes
 
-- Total time is roughly `(gpu_task time + WARMUP + COOLDOWN + cool-down wait) x number of experiments`.
+- Total time is roughly `(gpu_task time + WARMUP + COOLDOWN + up to SETTLE_MAX) x number of experiments`.
   Use `-c` / `-f` to run a subset first.
 - `sysbench memory --memory-oper=none` (the `*n` folders) generates CPU load with no
   memory traffic. It is the "CPU-side contention" control.

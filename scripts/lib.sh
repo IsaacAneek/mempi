@@ -10,7 +10,7 @@ SCRIPTS_DIR="$LIB_DIR"
 BIN_DIR="$ROOT_DIR/build"          # C tools are built here by the Makefile
 
 # ---- where results go / what to run -----------------------------------------
-: "${DATA_DIR:=/data}"
+: "${DATA_DIR:=$ROOT_DIR/data}"      # results go to <project>/data/<name>/
 : "${GPU_CMD:=./build/gpu_task}"
 : "${GPU_TIMEOUT:=900}"                 # seconds, per gpu_task run
 : "${GPU_CPUS:=}"                       # taskset list for gpu_task, e.g. "0"
@@ -35,8 +35,8 @@ NT="${SB_THREADS:-$(nproc 2>/dev/null || echo 4)}"   # default thread count
 : "${WARMUP:=3}"                        # seconds of stress+monitors before gpu_task
 : "${COOLDOWN:=3}"                      # seconds after gpu_task before stopping everything
 : "${DROP_CACHES:=1}"                   # drop page cache before each run (root only)
-SETTLE_TEMP="${SETTLE_TEMP-55}"         # wait for SoC <= this C before each run; empty = off
-: "${SETTLE_MAX:=180}"
+SETTLE_TEMP="${SETTLE_TEMP-70}"         # wait until SoC <= this C before each run; empty = no wait
+: "${SETTLE_MAX:=60}"                    # never wait longer than this many seconds
 
 export DATA_DIR GPU_CMD GPU_TIMEOUT GPU_CPUS STRESS_CPUS DVFS_SCRIPT DVFS_INTERVAL \
        V3D_DEV V3D_INTERVAL_MS V3D_COUNTERS NT SB_REPORT SB_MAX_TIME CPU_PRIME \
@@ -59,16 +59,17 @@ soc_temp() {
     vcgencmd measure_temp 2>/dev/null | sed -E 's/[^0-9.]//g'
 }
 
-# Block until the SoC has cooled to SETTLE_TEMP (or SETTLE_MAX seconds passed).
+# Wait (at most SETTLE_MAX seconds) until the SoC is at or below SETTLE_TEMP.
 wait_settle() {
     [[ -n "$SETTLE_TEMP" ]] || return 0
     local waited=0 t
     while (( waited < SETTLE_MAX )); do
         t="$(soc_temp)"; [[ -n "$t" ]] || return 0
         awk -v t="$t" -v m="$SETTLE_TEMP" 'BEGIN{exit !(t<=m)}' && return 0
+        echo "    [settle] SoC ${t}C > ${SETTLE_TEMP}C, waiting (${waited}s/${SETTLE_MAX}s)..."
         sleep 5; waited=$((waited + 5))
     done
-    echo "  (SoC did not cool to <= ${SETTLE_TEMP}C within ${SETTLE_MAX}s, continuing)"
+    echo "    [settle] gave up after ${SETTLE_MAX}s, continuing"
 }
 
 # Locate the DVFS profiler script; prints absolute path or returns 1.
