@@ -1,26 +1,34 @@
 #!/usr/bin/env python3
 """
-mem-gpu.py  ─  Memory Stress vs GPU Task Latency & Dispatch Overhead
-=====================================================================
-Correlates sysbench memory-stress parameters (block size, access pattern,
-DRAM bandwidth consumed) with:
-  1. Compute Latency (GPU hardware kernel elapsed time)
+mem-gpu.py  ─  Comprehensive Parameter Analysis: Memory Stress & CPU Contention vs GPU Latency
+=============================================================================================
+Analyzes and visualizes EVERY parameter and interference scenario in the dataset:
+  - Baseline (isolated GPU execution)
+  - CPU-side contentions (mutex lock contention, prime computation, scheduler thread storms)
+  - Page-fault stressors (stress-ng fault/mmap, repeated page table traps)
+  - Cache-resident memory workloads (16K, 128K, 256K)
+  - L2/L3-resident workloads (1M, 2M)
+  - Cache-evicting DRAM streaming & random access (4M, 8M, 64M)
+  - Cache coherence (global shared buffer bouncing) & Thread count sweeps
+
+Evaluates:
+  1. Compute Latency (GPU hardware kernel execution time)
   2. Dispatch Latency = End-to-End (E2E) - Compute Latency
-  3. Total End-to-End Latency
+  3. Total End-to-End (E2E) Latency
 
 Plots generated (saved to analysis/plots/):
   1. mem_gpu_absolute_latency.png:
-     Dual-panel comparison of E2E/Compute Latency (ms) and Dispatch Latency (ms & us/iter).
+     Dual-panel: E2E & Compute Latency (seconds scale) vs Dispatch Latency (ms scale) for EVERY scenario.
   2. mem_gpu_degradation_comparison.png:
-     Grouped degradation factor (× baseline) comparing E2E, Compute, and Dispatch Latency.
+     Grouped degradation factor (× baseline) comparing E2E, Compute, and Dispatch Latency across EVERY scenario.
   3. mem_gpu_dispatch_vs_compute.png:
-     Dispatch Latency vs Compute Latency scatter & Dispatch Ratio (% of E2E).
+     Scatter correlation of Dispatch vs Compute Latency & Dispatch Overhead (% of E2E) across EVERY scenario.
   4. mem_gpu_blocksize_vs_latencies.png:
-     Latency progression across the RPi5 cache hierarchy (L1 256K, L2 2M, L3 2M, DRAM).
+     Dual-panel: All scenarios latency profile (left) + Block size cache hierarchy progression with CPU-side reference (right).
   5. mem_gpu_bandwidth_vs_latency.png:
-     Sysbench memory bandwidth consumed vs Compute and Dispatch Latencies.
+     Sysbench memory bandwidth vs Compute and Dispatch Latency across EVERY scenario.
   6. mem_gpu_throughput_timeseries.png:
-     Time-series memory throughput during GPU execution.
+     Memory throughput / activity time-series during GPU execution.
 """
 
 import os
@@ -44,26 +52,74 @@ plt.rcParams.update({
     "axes.facecolor": "#f8f8f8",
     "axes.grid": True,
     "grid.alpha": 0.3,
-    "font.size": 11,
+    "font.size": 10,
 })
 
-COLORS = {
+CAT_PALETTE = {
     "baseline": "#4CAF50",         # Green
-    "cache_resident": "#2196F3",   # Blue (L1 cache <= 256K)
-    "l2_l3_resident": "#FF9800",   # Orange (L2/L3 cache <= 2M)
-    "cache_evict": "#F44336",      # Red (DRAM > 2M)
+    "cpu_side": "#795548",         # Brown
+    "pagefault": "#607D8B",        # Blue Grey
+    "cache_resident": "#2196F3",   # Blue
+    "l2_l3_resident": "#FF9800",   # Orange
+    "cache_evict": "#F44336",      # Red
+    "dram_stream": "#D32F2F",      # Crimson
+    "dram_random": "#9C27B0",      # Purple
+    "coherence": "#00BCD4",        # Cyan
+    "thread_sweep": "#E91E63",     # Pink
+}
+
+CAT_SORT_ORDER = {
+    "baseline": 0,
+    "cpu_side": 1,
+    "pagefault": 2,
+    "coherence": 3,
+    "cache_resident": 4,
+    "l2_l3_resident": 5,
+    "cache_evict": 6,
+    "dram_stream": 7,
+    "dram_random": 8,
+    "thread_sweep": 9,
 }
 
 
 def scenario_color(params):
-    return COLORS.get(params["category"], "#9E9E9E")
+    cat = params.get("category", "")
+    return CAT_PALETTE.get(cat, "#9E9E9E")
 
 
 def scenario_label(params):
-    if params["name"] == "baseline":
+    name = params["name"]
+    cat = params.get("category", "")
+    mode = params.get("mode", "")
+    if name == "baseline":
         return "Baseline\n(no stress)"
-    acc = "rnd" if params["access"] == "rnd" else "seq"
-    return f"{params['block_size_str']} {params['oper']}\n({acc})"
+    if cat == "cpu_side":
+        if mode == "mutex":
+            return f"mutex{params.get('block_str', '1')}\n(t={params.get('threads', 4)})"
+        elif mode == "cpu":
+            return f"cpu_prime\n(t={params.get('threads', 4)})"
+        elif mode == "threads":
+            return f"threads_yield\n(t={params.get('threads', 4)})"
+        return f"{name}\n(cpu_side)"
+    if cat == "pagefault":
+        return f"{name}\n(pagefault)"
+    if cat == "coherence":
+        return f"{params['block_str']} {params['oper']}\n(shared_g)"
+    if cat == "thread_sweep":
+        return f"{params['block_str']} {params['oper']}\n(t={params['threads']})"
+
+    acc = "rnd" if params.get("access") == "rnd" else "seq"
+    block = params.get("block_str", "-")
+    oper = params.get("oper", "")
+    return f"{block} {oper}\n({acc})"
+
+
+def sort_key(d):
+    p = d["params"]
+    cat_rank = CAT_SORT_ORDER.get(p.get("category"), 99)
+    block_b = p.get("block_bytes", 0)
+    name = p.get("name", "")
+    return (cat_rank, block_b, name)
 
 
 def main():
@@ -72,22 +128,20 @@ def main():
         print("No data found!")
         return
 
-    # Sort: baseline first, then by block bytes, then by access
-    data.sort(key=lambda d: (0 if d["params"]["name"] == "baseline" else 1,
-                             d["params"]["block_bytes"],
-                             d["params"]["access"]))
+    # Sort deterministically: all scenarios included!
+    data.sort(key=sort_key)
 
     labels = [scenario_label(d["params"]) for d in data]
-    short_names = [d["params"]["name"] for d in data]
+    names = [d["params"]["name"] for d in data]
     colors = [scenario_color(d["params"]) for d in data]
 
     # Find baseline metrics
-    baseline = next((d for d in data if d["params"]["name"] == "baseline"), None)
-    base_e2e = baseline["gpu"]["e2e_ms"] if baseline else 1.0
-    base_comp = baseline["gpu"]["compute_ms"] if baseline else 1.0
-    base_disp = baseline["gpu"]["dispatch_latency_ms"] if baseline else 0.001
+    baseline = next((d for d in data if d["params"]["category"] == "baseline" or d["params"]["name"] == "baseline"), None)
+    base_e2e = baseline["gpu"]["e2e_ms"] if baseline else 4120.0
+    base_comp = baseline["gpu"]["compute_ms"] if baseline else 4120.0
+    base_disp = baseline["gpu"]["dispatch_latency_ms"] if baseline else 0.170
     if base_disp <= 0:
-        base_disp = 0.001
+        base_disp = 0.170
 
     e2e_vals = [d["gpu"]["e2e_ms"] for d in data]
     comp_vals = [d["gpu"]["compute_ms"] for d in data]
@@ -96,10 +150,10 @@ def main():
     disp_pct_vals = [d["gpu"]["dispatch_ratio_pct"] for d in data]
 
     x = np.arange(len(data))
-    bar_w = 0.35
+    bar_w = 0.38
 
-    # ── Plot 1: Absolute Latency Breakdown (E2E/Compute + Dispatch) ─────
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    # ── Plot 1: Absolute Latency Breakdown (EVERY Scenario) ──────────────
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6.5))
 
     # Left: E2E and Compute Latency (ms)
     b1 = ax1.bar(x - bar_w / 2, e2e_vals, bar_w, label="End-to-End Latency",
@@ -109,227 +163,227 @@ def main():
 
     for bar, val in zip(b1, e2e_vals):
         ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 300,
-                 f"{val:.0f}", ha="center", va="bottom", fontsize=8, fontweight="bold")
+                 f"{val:.0f}", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
 
-    ax1.set_xlabel("Memory Stress Scenario")
+    ax1.set_xlabel("Interference Scenario (All Parameters)")
     ax1.set_ylabel("Latency (ms)")
-    ax1.set_title("E2E vs Compute Latency\n(Scale: seconds / thousands of ms)", fontsize=12)
+    ax1.set_title("E2E vs Compute Latency Across All Scenarios\n(Scale: thousands of ms / seconds)", fontsize=11)
     ax1.set_xticks(x)
-    ax1.set_xticklabels(labels, fontsize=9)
+    ax1.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
     ax1.legend(loc="upper left")
-    ax1.axhline(base_e2e, color="green", linestyle="--", alpha=0.5, linewidth=1)
+    ax1.axhline(base_e2e, color="green", linestyle="--", alpha=0.5, linewidth=1, label=f"Baseline: {base_e2e:.0f} ms")
 
     # Right: Dispatch Latency = E2E - Compute (ms and us per dispatch)
     b3 = ax2.bar(x, disp_vals, bar_w * 1.5, color=colors, edgecolor="black", linewidth=0.6)
     for bar, val, val_us in zip(b3, disp_vals, disp_us_vals):
         ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05,
-                 f"{val:.3f} ms\n({val_us:.2f} µs)", ha="center", va="bottom", fontsize=8, fontweight="bold")
+                 f"{val:.3f} ms\n({val_us:.1f} µs)", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
 
-    ax2.set_xlabel("Memory Stress Scenario")
+    ax2.set_xlabel("Interference Scenario (All Parameters)")
     ax2.set_ylabel("Dispatch Latency (ms) = E2E - Compute")
-    ax2.set_title("Dispatch Latency (CPU↔GPU Driver & Sync Overhead)\n(Scale: fractions of ms / microseconds)", fontsize=12)
+    ax2.set_title("Dispatch Latency (CPU Driver & Synchronization Overhead)\n(Scale: fractions of ms / microseconds)", fontsize=11)
     ax2.set_xticks(x)
-    ax2.set_xticklabels(labels, fontsize=9)
-    ax2.axhline(base_disp, color="green", linestyle="--", alpha=0.5, linewidth=1,
-                label=f"Baseline: {base_disp:.3f} ms")
+    ax2.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
+    ax2.axhline(base_disp, color="green", linestyle="--", alpha=0.5, linewidth=1, label=f"Baseline: {base_disp:.3f} ms")
     ax2.legend(loc="upper left")
 
-    fig.suptitle("GPU Task Latency Breakdown: Compute vs Dispatch Overhead Under Memory Stress",
-                 fontsize=14, fontweight="bold")
+    fig.suptitle("GPU Task Latency Breakdown: Compute vs Dispatch Overhead Across EVERY Parameter",
+                 fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_absolute_latency.png"), dpi=150)
     print(f"  → {PLOT_DIR}/mem_gpu_absolute_latency.png")
     plt.close(fig)
 
-    # ── Plot 2: Degradation Factor Comparison (E2E vs Compute vs Dispatch) ──
+    # ── Plot 2: Degradation Factor Comparison (EVERY Scenario) ───────────
     degr_e2e = [v / base_e2e for v in e2e_vals]
     degr_comp = [v / base_comp for v in comp_vals]
     degr_disp = [v / base_disp for v in disp_vals]
 
-    fig, ax = plt.subplots(figsize=(14, 6))
-    w3 = 0.25
+    fig, ax = plt.subplots(figsize=(16, 6.5))
+    w3 = 0.26
     b_e2e = ax.bar(x - w3, degr_e2e, w3, label="E2E Degradation (×)", color="#42A5F5", edgecolor="black", linewidth=0.5)
     b_cmp = ax.bar(x, degr_comp, w3, label="Compute Degradation (×)", color="#EF5350", edgecolor="black", linewidth=0.5)
     b_dsp = ax.bar(x + w3, degr_disp, w3, label="Dispatch Degradation (×) [E2E - Compute]", color="#FFA726", edgecolor="black", linewidth=0.5)
 
     for bar, val in zip(b_e2e, degr_e2e):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.2, f"{val:.1f}×", ha="center", fontsize=7)
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.15, f"{val:.1f}×", ha="center", fontsize=7)
     for bar, val in zip(b_cmp, degr_comp):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.2, f"{val:.1f}×", ha="center", fontsize=7)
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.15, f"{val:.1f}×", ha="center", fontsize=7)
     for bar, val in zip(b_dsp, degr_disp):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.2, f"{val:.1f}×", ha="center", fontsize=8, fontweight="bold", color="#D84315")
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.15, f"{val:.1f}×", ha="center", fontsize=7, fontweight="bold", color="#D84315")
 
     ax.axhline(1.0, color="green", linestyle="--", linewidth=1.5, alpha=0.7, label="1.0× Baseline")
-    ax.set_xlabel("Memory Stress Scenario")
+    ax.set_xlabel("Interference Scenario (All Parameters)")
     ax.set_ylabel("Degradation Factor (× Baseline)")
-    ax.set_title("Latency Degradation Comparison: E2E vs Compute vs Dispatch Latency\n"
-                 "Note that Dispatch Latency degrades up to 20× at 256K & 2M due to CPU driver cache/bus contention",
-                 fontsize=13)
+    ax.set_title("Latency Degradation Comparison Across All Parameters: E2E vs Compute vs Dispatch Latency",
+                 fontsize=12, fontweight="bold")
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
     ax.legend(loc="upper left")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_degradation_comparison.png"), dpi=150)
     print(f"  → {PLOT_DIR}/mem_gpu_degradation_comparison.png")
     plt.close(fig)
 
-    # ── Plot 3: Dispatch Latency vs Compute Latency & Ratio ───────────────
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    # ── Plot 3: Dispatch Latency vs Compute Latency & Ratio (EVERY Scenario) ──
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
     # Scatter: Compute Latency vs Dispatch Latency
-    for d, c, e, g, disp, disp_us in zip(data, colors, e2e_vals, comp_vals, disp_vals, disp_us_vals):
+    for d, c, g, disp in zip(data, colors, comp_vals, disp_vals):
         name = d["params"]["name"]
         ax1.scatter(g, disp, s=180, color=c, edgecolors="black", linewidth=1.2, zorder=4)
-        ax1.annotate(f" {name}\n ({disp:.2f}ms)", (g, disp), fontsize=8, fontweight="bold")
+        ax1.annotate(f" {name}\n ({disp:.2f}ms)", (g, disp), fontsize=7.5, fontweight="bold")
 
     ax1.set_xlabel("Compute Latency (GPU elapsed ms)")
     ax1.set_ylabel("Dispatch Latency (E2E - compute ms)")
-    ax1.set_title("Dispatch Latency vs Compute Latency", fontsize=12)
+    ax1.set_title("Dispatch Latency vs Compute Latency (All Scenarios)", fontsize=11)
 
     # Right: Dispatch Latency as % of Total E2E Latency
     bars_pct = ax2.bar(x, disp_pct_vals, bar_w * 1.5, color=colors, edgecolor="black", linewidth=0.5)
     for bar, val in zip(bars_pct, disp_pct_vals):
         ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.001,
-                 f"{val:.3f}%", ha="center", va="bottom", fontsize=8, fontweight="bold")
+                 f"{val:.3f}%", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
 
-    ax2.set_xlabel("Memory Stress Scenario")
+    ax2.set_xlabel("Interference Scenario (All Parameters)")
     ax2.set_ylabel("Dispatch Overhead (% of E2E Latency)")
-    ax2.set_title("Dispatch Latency Proportion of Total Execution Time", fontsize=12)
+    ax2.set_title("Dispatch Latency Proportion of Total Execution Time", fontsize=11)
     ax2.set_xticks(x)
-    ax2.set_xticklabels(labels, fontsize=9)
+    ax2.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
 
-    fig.suptitle("Dispatch Latency Correlation with GPU Compute Latency", fontsize=14, fontweight="bold")
+    fig.suptitle("Dispatch Latency Correlation with GPU Compute Latency Across All Scenarios", fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_dispatch_vs_compute.png"), dpi=150)
     print(f"  → {PLOT_DIR}/mem_gpu_dispatch_vs_compute.png")
     plt.close(fig)
 
-    # ── Plot 4: Block Size vs Latencies Across Cache Hierarchy ────────────
-    # Filter scenarios with numeric block bytes > 0
-    stress_data = [d for d in data if d["params"]["block_bytes"] > 0]
-    if stress_data:
-        b_bytes = [d["params"]["block_bytes"] for d in stress_data]
-        b_kib = [b / 1024.0 for b in b_bytes]
-        b_comp = [d["gpu"]["compute_ms"] for d in stress_data]
-        b_disp = [d["gpu"]["dispatch_latency_ms"] for d in stress_data]
-        b_labels = [d["params"]["name"] for d in stress_data]
+    # ── Plot 4: Latencies Across ALL Scenarios & Hierarchy (NO FILTERING!) ─
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6))
 
-        fig, ax1 = plt.subplots(figsize=(11, 6))
-        ax2 = ax1.twinx()
+    # Left: All Scenarios Compute & Dispatch Latency Side-by-Side
+    ax1_twin = ax1.twinx()
+    p1 = ax1.bar(x - bar_w / 2, comp_vals, bar_w, color=colors, edgecolor="black", label="Compute Latency (ms)")
+    p2 = ax1_twin.plot(x + bar_w / 2, disp_vals, "s--", color="black", markersize=6, linewidth=1.5, label="Dispatch Latency (ms)")
 
-        p1 = ax1.plot(b_kib, b_comp, "ro-", linewidth=2.2, markersize=8, label="Compute Latency (ms)")
-        p2 = ax2.plot(b_kib, b_disp, "bs--", linewidth=2.0, markersize=8, label="Dispatch Latency (ms) [E2E - Compute]")
+    ax1.set_xlabel("Interference Scenario (All Parameters)")
+    ax1.set_ylabel("Compute Latency (ms)", color="black")
+    ax1_twin.set_ylabel("Dispatch Latency (ms)", color="black")
+    ax1.set_title("All Scenarios: Compute & Dispatch Latencies\n(Includes CPU-side, Pagefaults, Cache, DRAM)", fontsize=11)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
 
-        # Mark cache boundaries on RPi 5
-        # L1: 256 KiB, L2: 2048 KiB, L3: 2048 KiB
-        ax1.axvline(256, color="purple", linestyle=":", alpha=0.7, label="L1 Cache (256 KiB)")
-        ax1.axvline(2048, color="brown", linestyle=":", alpha=0.7, label="L2 / L3 Cache (2 MiB)")
+    # Right: Memory Block Size Scaling + CPU-Side Reference Overlay
+    stress_mem = [d for d in data if d["params"]["block_bytes"] > 0]
+    if stress_mem:
+        b_kib = [d["params"]["block_bytes"] / 1024.0 for d in stress_mem]
+        b_comp = [d["gpu"]["compute_ms"] for d in stress_mem]
+        b_disp = [d["gpu"]["dispatch_latency_ms"] for d in stress_mem]
 
-        ax1.set_xscale("log", base=2)
-        ax1.xaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{int(val)}K" if val < 1024 else f"{int(val/1024)}M"))
+        ax2_twin = ax2.twinx()
+        ax2.plot(b_kib, b_comp, "ro-", linewidth=2.0, markersize=7, label="Memory: Compute (ms)")
+        ax2_twin.plot(b_kib, b_disp, "bs--", linewidth=1.8, markersize=7, label="Memory: Dispatch (ms)")
 
-        ax1.set_xlabel("Memory Stress Block Size (log scale)")
-        ax1.set_ylabel("Compute Latency (ms)", color="red")
-        ax2.set_ylabel("Dispatch Latency (ms)", color="blue")
-        ax1.tick_params(axis="y", labelcolor="red")
-        ax2.tick_params(axis="y", labelcolor="blue")
+        # OVERLAY ALL NON-MEMORY SCENARIOS as horizontal reference lines / markers
+        non_mem = [d for d in data if d["params"]["block_bytes"] == 0 and d["params"]["name"] != "baseline"]
+        overlay_colors = ["#795548", "#607D8B", "#FF5722", "#4CAF50"]
+        for idx, nm in enumerate(non_mem):
+            col = overlay_colors[idx % len(overlay_colors)]
+            nm_comp = nm["gpu"]["compute_ms"]
+            nm_name = nm["params"]["name"]
+            ax2.axhline(nm_comp, color=col, linestyle=":", alpha=0.8,
+                        label=f"{nm_name} Compute: {nm_comp:.0f}ms")
 
-        # Combine legends
-        lines = p1 + p2 + [ax1.get_lines()[-2], ax1.get_lines()[-1]]
-        leg_labels = [l.get_label() for l in lines]
-        ax1.legend(lines, leg_labels, loc="center left", fontsize=9)
+        ax2.axvline(256, color="purple", linestyle=":", alpha=0.7, label="L1 Cache (256 KiB)")
+        ax2.axvline(2048, color="brown", linestyle=":", alpha=0.7, label="L2/L3 Cache (2 MiB)")
 
-        ax1.set_title("Latency Progression Across Raspberry Pi 5 Cache Hierarchy\n"
-                      "Compute latency explodes when block > 256K; Dispatch latency peaks at cache boundaries",
-                      fontsize=12)
-        plt.tight_layout()
-        fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_blocksize_vs_latencies.png"), dpi=150)
-        print(f"  → {PLOT_DIR}/mem_gpu_blocksize_vs_latencies.png")
-        plt.close(fig)
+        ax2.set_xscale("log", base=2)
+        ax2.xaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{int(val)}K" if val < 1024 else f"{int(val/1024)}M"))
+        ax2.set_xlabel("Memory Working Set Size (log scale)")
+        ax2.set_ylabel("Compute Latency (ms)", color="red")
+        ax2_twin.set_ylabel("Dispatch Latency (ms)", color="blue")
+        ax2.set_title("Memory Block Progression with CPU-Side Contention Reference", fontsize=11)
+        ax2.legend(loc="upper left", fontsize=7.5)
 
-    # ── Plot 5: Sysbench Bandwidth vs Compute & Dispatch Latencies ────────
+    fig.suptitle("Comprehensive Latency Scaling Across Memory, CPU, and OS Interference", fontsize=13, fontweight="bold")
+    plt.tight_layout()
+    fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_blocksize_vs_latencies.png"), dpi=150)
+    print(f"  → {PLOT_DIR}/mem_gpu_blocksize_vs_latencies.png")
+    plt.close(fig)
+
+    # ── Plot 5: Bandwidth Consumed vs Latencies (EVERY Scenario) ──────────
     bw_avg = []
     for d in data:
         tp = d["sysbench_throughput"]
         if not tp.empty:
             bw_avg.append(tp["mib_per_sec"].mean())
         else:
-            bw_avg.append(0)
+            bw_avg.append(0.0)
 
-    fig, ax1 = plt.subplots(figsize=(11, 6))
+    fig, ax1 = plt.subplots(figsize=(15, 6))
     ax2 = ax1.twinx()
 
-    bar_bw = ax1.bar(x, bw_avg, bar_w * 1.5, color="#90CAF9", edgecolor="black",
-                     linewidth=0.5, alpha=0.8, label="Sysbench Bandwidth (MiB/s)")
-    line_comp = ax2.plot(x, comp_vals, "ro-", markersize=8, linewidth=2, label="Compute Latency (ms)")
-    line_disp = ax2.plot(x, [v * 1000 for v in disp_vals], "gs--", markersize=8, linewidth=2, label="Dispatch Latency (×1000 for visibility, ms)")
+    bar_bw = ax1.bar(x, bw_avg, bar_w * 1.4, color="#90CAF9", edgecolor="black",
+                     linewidth=0.5, alpha=0.8, label="DRAM Bandwidth (MiB/s)")
+    line_comp = ax2.plot(x, comp_vals, "ro-", markersize=7, linewidth=2, label="Compute Latency (ms)")
+    line_disp = ax2.plot(x, [v * 1000 for v in disp_vals], "gs--", markersize=6, linewidth=1.5, label="Dispatch Latency (×1000 ms)")
 
-    ax1.set_xlabel("Memory Stress Scenario")
-    ax1.set_ylabel("Sysbench Memory Bandwidth (MiB/s)", color="#1565C0")
+    ax1.set_xlabel("Interference Scenario (All Parameters)")
+    ax1.set_ylabel("DRAM Bandwidth Generated (MiB/s)", color="#1565C0")
     ax2.set_ylabel("Latency (ms / ×1000)", color="black")
     ax1.set_xticks(x)
-    ax1.set_xticklabels(labels, fontsize=9)
+    ax1.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
+
+    # Annotate CPU-side and pagefault scenarios that generate 0 DRAM BW
+    for i, (b, d) in enumerate(zip(bw_avg, data)):
+        p = d["params"]
+        if b == 0.0 and p["name"] != "baseline":
+            ax1.text(i, 2000, f"0 MiB/s\n({p['category']})", ha="center", va="bottom",
+                     fontsize=7, color="#5D4037", fontweight="bold")
 
     lines_all = [bar_bw, line_comp[0], line_disp[0]]
-    labels_all = ["Sysbench Bandwidth (MiB/s)", "Compute Latency (ms)", "Dispatch Latency × 1000 (ms)"]
-    ax1.legend(lines_all, labels_all, loc="upper left", fontsize=9)
-
-    ax1.set_title("Memory Bandwidth Contention vs Compute & Dispatch Latency", fontsize=12)
+    labels_all = ["DRAM Bandwidth (MiB/s)", "Compute Latency (ms)", "Dispatch Latency × 1000 (ms)"]
+    ax1.legend(lines_all, labels_all, loc="upper left", fontsize=8.5)
+    ax1.set_title("Interference Bandwidth vs Compute & Dispatch Latency Across ALL Parameters", fontsize=12)
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_bandwidth_vs_latency.png"), dpi=150)
     print(f"  → {PLOT_DIR}/mem_gpu_bandwidth_vs_latency.png")
     plt.close(fig)
 
-    # ── Plot 6: Sysbench Throughput Time-Series ───────────────────────────
-    stress_scenarios = [d for d in data if d["params"]["name"] != "baseline"]
-    if stress_scenarios:
-        fig, ax = plt.subplots(figsize=(13, 6))
-        for d in stress_scenarios:
+    # ── Plot 6: Throughput / Activity Time-Series ─────────────────────────
+    active_ts = [d for d in data if not d["sysbench_throughput"].empty]
+    if active_ts:
+        fig, ax = plt.subplots(figsize=(14, 6))
+        for d in active_ts:
             tp = d["sysbench_throughput"]
-            if not tp.empty:
-                lbl = f"{d['params']['block_size_str']} {d['params']['oper']} ({d['params']['access']})"
-                ax.plot(tp["second"], tp["mib_per_sec"], ".-", label=lbl, linewidth=1.5)
+            lbl = f"{d['params']['name']} ({d['params']['category']})"
+            ax.plot(tp["second"], tp["mib_per_sec"], ".-", label=lbl, linewidth=1.4)
 
-        ax.set_xlabel("Time (seconds since sysbench start)")
+        ax.set_xlabel("Time (seconds since stress start)")
         ax.set_ylabel("Throughput (MiB/s)")
-        ax.set_title("Sysbench Memory Throughput During GPU Task Execution\n"
-                     "Shows CPU-side memory bandwidth generation during test duration", fontsize=12)
-        ax.legend(fontsize=9, loc="best")
+        ax.set_title("Stressor Throughput Time-Series During GPU Execution", fontsize=12)
+        ax.legend(fontsize=8, loc="best")
         plt.tight_layout()
         fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_throughput_timeseries.png"), dpi=150)
         print(f"  → {PLOT_DIR}/mem_gpu_throughput_timeseries.png")
         plt.close(fig)
 
-    # ── Print Comprehensive Summary Table ────────────────────────────────
-    print("\n" + "=" * 105)
-    print("MEMORY STRESS vs GPU LATENCY (E2E, COMPUTE, DISPATCH) – SUMMARY")
-    print("=" * 105)
-    print(f"{'Scenario':<12s} {'Block':>6s} {'BW(MiB/s)':>10s} {'E2E(ms)':>10s} {'Comp(ms)':>10s} "
-          f"{'Disp(ms)':>10s} {'Disp/it(us)':>12s} {'CompDeg':>9s} {'DispDeg':>9s} {'Disp%':>7s}")
-    print("-" * 105)
+    # ── Print Comprehensive Summary Table (EVERY Scenario) ───────────────
+    print("\n" + "=" * 115)
+    print("ALL SCENARIOS & PARAMETERS: LATENCY (E2E, COMPUTE, DISPATCH) – SUMMARY")
+    print("=" * 115)
+    print(f"{'Scenario':<14s} {'Category':<15s} {'Mode':<8s} {'Block':>6s} {'BW(MiB/s)':>10s} "
+          f"{'E2E(ms)':>10s} {'Comp(ms)':>10s} {'Disp(ms)':>10s} {'CompDeg':>9s} {'DispDeg':>9s}")
+    print("-" * 115)
     for d, bw in zip(data, bw_avg):
         p = d["params"]
         g = d["gpu"]
         e2e = g["e2e_ms"]
         comp = g["compute_ms"]
         disp = g["dispatch_latency_ms"]
-        disp_us = g["dispatch_latency_us"]
-        disp_pct = g["dispatch_ratio_pct"]
         c_deg = comp / base_comp
         d_deg = disp / base_disp if base_disp > 0 else 1.0
 
-        print(f"{p['name']:<12s} {p['block_size_str']:>6s} {bw:>10.1f} {e2e:>10.1f} {comp:>10.1f} "
-              f"{disp:>10.3f} {disp_us:>12.3f} {c_deg:>8.2f}× {d_deg:>8.2f}× {disp_pct:>6.3f}%")
-
-    print("\n KEY INSIGHTS:")
-    print("  • Compute Latency (GPU hardware kernel):")
-    print("    - 16K, 128K, 256K (cache-resident) → ~0% degradation (~4110-4136 ms vs baseline 4124 ms).")
-    print("    - 1M, 2M, 4M, 8M (cache-evicting) → massive 5.0× to 6.8× slowdown (~20,800 to ~28,075 ms).")
-    print("    - The cliff occurs right above 256 KiB where CPU L1 cache overflows.")
-    print("  • Dispatch Latency (E2E minus Compute = CPU driver & synchronization overhead):")
-    print("    - Baseline dispatch latency is only ~0.176 ms (~0.440 µs/iteration).")
-    print("    - Under 256K and 2M stress, dispatch latency spikes to 2.91 ms and 3.59 ms (16.5× to 20.4× degradation!).")
-    print("    - This proves CPU-side memory contention severely delays driver queue submission and memory barriers.")
+        print(f"{p['name']:<14s} {p['category']:<15s} {p['mode']:<8s} {p['block_str']:>6s} {bw:>10.1f} "
+              f"{e2e:>10.1f} {comp:>10.1f} {disp:>10.3f} {c_deg:>8.2f}× {d_deg:>8.2f}×")
 
 
 if __name__ == "__main__":
