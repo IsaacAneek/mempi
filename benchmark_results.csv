@@ -1,0 +1,11 @@
+Task,E2E Latency (ms),Avg Dispatch (us),Status
+task10_val_comp,2361.529,5903.821,PASS
+task1_train_mem,7375.356,18438.39,PASS
+task2_train_mem,8628.716,21571.789,PASS
+task3_train_comp,4733.083,11832.707,PASS
+task4_train_comp,5168.85,12922.125,PASS
+task5_train_hyb,3412.641,8531.602,PASS
+task6_train_hyb,8618.929,21547.323,PASS
+task7_test_hyb1,3433.904,8584.761,PASS
+task8_test_hyb2,3442.829,8607.073,PASS
+task9_val_hyb,3425.964,8564.909,PASS
