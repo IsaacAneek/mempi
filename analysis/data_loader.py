@@ -49,13 +49,21 @@ def parse_folder_name(name):
     unit = unit.lower()
     block_bytes = num * (1024 if unit == "k" else 1024 * 1024)
     oper_map = {"r": "read", "w": "write", "rw": "readwrite"}
+    # Category based on RPi5 cache hierarchy (L1=256K, L2=2M, L3=2M)
+    if block_bytes <= 256 * 1024:
+        cat = "cache_resident"
+    elif block_bytes <= 2 * 1024 * 1024:
+        cat = "l2_l3_resident"
+    else:
+        cat = "cache_evict"
+
     return {
         "name": name,
         "block_size_str": f"{num}{unit.upper()}",
         "block_bytes": block_bytes,
         "oper": oper_map.get(oper, oper),
         "access": access or "seq",
-        "category": "cache_resident" if block_bytes <= 256 * 1024 else "cache_evict",
+        "category": cat,
     }
 
 
@@ -108,6 +116,18 @@ def load_gpu_task(folder):
             m = re.match(r"Dispatch count:\s+(\d+)", line)
             if m:
                 result["dispatch_count"] = int(m.group(1))
+
+    # Standardize compute latency and dispatch latency (E2E - compute)
+    if "e2e_ms" in result and "gpu_elapsed_ms" in result:
+        result["compute_ms"] = result["gpu_elapsed_ms"]
+        # Dispatch latency is E2E minus compute (GPU elapsed)
+        disp_ms = result.get("overhead_ms", result["e2e_ms"] - result["gpu_elapsed_ms"])
+        result["dispatch_latency_ms"] = max(disp_ms, 0.0)
+        result["overhead_ms"] = result["dispatch_latency_ms"]
+        
+        count = result.get("dispatch_count", 400)
+        result["dispatch_latency_us"] = (result["dispatch_latency_ms"] * 1000.0) / count if count > 0 else 0.0
+        result["dispatch_ratio_pct"] = (result["dispatch_latency_ms"] / result["e2e_ms"] * 100.0) if result["e2e_ms"] > 0 else 0.0
     return result
 
 
@@ -289,11 +309,16 @@ def load_all():
 
 if __name__ == "__main__":
     # Quick test
-    for s in load_all():
+    all_s = load_all()
+    print(f"{'Folder':<12s} {'Block':>6s} {'E2E (ms)':>10s} {'Compute (ms)':>12s} {'Dispatch (ms)':>14s} {'Disp/iter (us)':>15s} {'Disp %':>8s}")
+    print("-" * 82)
+    for s in all_s:
         p = s["params"]
         g = s["gpu"]
-        print(f"{s['folder']:15s}  block={p['block_size_str']:>5s}  "
-              f"E2E={g.get('e2e_ms',0):10.1f} ms  "
-              f"GPU={g.get('gpu_elapsed_ms',0):10.1f} ms  "
-              f"overhead={g.get('overhead_ms',0):.3f} ms")
+        e2e = g.get('e2e_ms', 0)
+        comp = g.get('compute_ms', 0)
+        disp = g.get('dispatch_latency_ms', 0)
+        disp_us = g.get('dispatch_latency_us', 0)
+        disp_pct = g.get('dispatch_ratio_pct', 0)
+        print(f"{s['folder']:<12s} {p['block_size_str']:>6s} {e2e:>10.1f} {comp:>12.1f} {disp:>14.3f} {disp_us:>15.3f} {disp_pct:>7.3f}%")
 
