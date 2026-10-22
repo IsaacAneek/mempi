@@ -1,0 +1,738 @@
+nohup: ignoring input
+Experiments selected: 94  (data dir: /home/pi/mempi_repo/data, default threads: 4)
+
+[1/94] [skip] baseline: already done (-F to redo)
+
+[2/94] === 16kr  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=16K --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16kr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.35s
+
+[3/94] === 16kr_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=16K --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16kr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.36s
+
+[4/94] === 16kw  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=16K --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16kw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.50s
+
+[5/94] === 16kw_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=16K --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16kw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.36s
+
+[6/94] === 32kr  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=32K --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/32kr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.46s
+
+[7/94] === 32kr_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=32K --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/32kr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.48s
+
+[8/94] === 32kw  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=32K --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/32kw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.64s
+
+[9/94] === 32kw_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=32K --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/32kw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.38s
+
+[10/94] === 128kr  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=128K --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/128kr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.29s
+
+[11/94] === 128kr_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=128K --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/128kr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.43s
+
+[12/94] === 128kw  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=128K --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/128kw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=9.10s
+
+[13/94] === 128kw_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=128K --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/128kw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.46s
+
+[14/94] === 256kr  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=256K --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256kr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.32s
+
+[15/94] === 256kr_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=256K --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256kr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.38s
+
+[16/94] === 256kw  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=256K --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256kw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=9.90s
+
+[17/94] === 256kw_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=256K --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256kw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.28s
+
+[18/94] === 1mr  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=1M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/1mr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=33.84s
+
+[19/94] === 1mr_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=1M --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/1mr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.81s
+
+[20/94] === 1mw  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=1M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/1mw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.14s
+
+[21/94] === 1mw_rnd  [cache_resident] ===
+    stress: sysbench memory --memory-block-size=1M --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/1mw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=36.69s
+
+[22/94] === 2mr  [cache_evict] ===
+    stress: sysbench memory --memory-block-size=2M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/2mr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=36.40s
+
+[23/94] === 2mr_rnd  [cache_evict] ===
+    stress: sysbench memory --memory-block-size=2M --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/2mr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=8.80s
+
+[24/94] === 2mw  [cache_evict] ===
+    stress: sysbench memory --memory-block-size=2M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/2mw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.22s
+
+[25/94] === 2mw_rnd  [cache_evict] ===
+    stress: sysbench memory --memory-block-size=2M --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/2mw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=37.28s
+
+[26/94] [skip] 4mr: already done (-F to redo)
+
+[27/94] === 4mr_rnd  [cache_evict] ===
+    stress: sysbench memory --memory-block-size=4M --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/4mr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.47s
+
+[28/94] === 4mw  [cache_evict] ===
+    stress: sysbench memory --memory-block-size=4M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/4mw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.50s
+
+[29/94] === 4mw_rnd  [cache_evict] ===
+    stress: sysbench memory --memory-block-size=4M --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/4mw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=37.04s
+
+[30/94] === 8mr  [dram_stream] ===
+    stress: sysbench memory --memory-block-size=8M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/8mr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=35.44s
+
+[31/94] [skip] 8mw: already done (-F to redo)
+
+[32/94] === 16mr  [dram_stream] ===
+    stress: sysbench memory --memory-block-size=16M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16mr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=37.66s
+
+[33/94] === 16mw  [dram_stream] ===
+    stress: sysbench memory --memory-block-size=16M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16mw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=11.51s
+
+[34/94] === 64mr  [dram_stream] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=37.08s
+
+[35/94] === 64mw  [dram_stream] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.22s
+
+[36/94] === 256mr  [dram_stream] ===
+    stress: sysbench memory --memory-block-size=256M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256mr/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=37.05s
+
+[37/94] === 256mw  [dram_stream] ===
+    stress: sysbench memory --memory-block-size=256M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256mw/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.41s
+
+[38/94] === 8mr_rnd  [dram_random] ===
+    stress: sysbench memory --memory-block-size=8M --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/8mr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.87s
+
+[39/94] === 8mw_rnd  [dram_random] ===
+    stress: sysbench memory --memory-block-size=8M --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/8mw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=37.46s
+
+[40/94] === 16mr_rnd  [dram_random] ===
+    stress: sysbench memory --memory-block-size=16M --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16mr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=11.83s
+
+[41/94] === 16mw_rnd  [dram_random] ===
+    stress: sysbench memory --memory-block-size=16M --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16mw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=37.34s
+
+[42/94] === 64mr_rnd  [dram_random] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=11.54s
+
+[43/94] === 64mw_rnd  [dram_random] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=37.26s
+
+[44/94] === 256mr_rnd  [dram_random] ===
+    stress: sysbench memory --memory-block-size=256M --memory-total-size=1000T --memory-oper=read --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256mr_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.54s
+
+[45/94] === 256mw_rnd  [dram_random] ===
+    stress: sysbench memory --memory-block-size=256M --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256mw_rnd/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=34.66s
+
+[46/94] === 16kw_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=16K --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=global --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16kw_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.51s
+
+[47/94] === 16kw_rnd_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=16K --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=global --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/16kw_rnd_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.41s
+
+[48/94] === 64kw_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=64K --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=global --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64kw_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.74s
+
+[49/94] === 64kw_rnd_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=64K --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=global --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64kw_rnd_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.49s
+
+[50/94] === 256kw_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=256K --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=global --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256kw_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=8.70s
+
+[51/94] === 256kw_rnd_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=256K --memory-total-size=1000T --memory-oper=write --memory-access-mode=rnd --memory-scope=global --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256kw_rnd_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.39s
+
+[52/94] === 32kw_t2_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=32K --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=global --threads=2 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/32kw_t2_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.42s
+
+[53/94] === 32kw_t8_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=32K --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=global --threads=8 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/32kw_t8_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.91s
+
+[54/94] === 256kr_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=256K --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=global --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/256kr_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.57s
+
+[55/94] === 8mr_g  [coherence] ===
+    stress: sysbench memory --memory-block-size=8M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=global --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/8mr_g/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=21.52s
+
+[56/94] === 4mr_t1  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=4M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=1 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/4mr_t1/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=8.84s
+
+[57/94] === 4mr_t2  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=4M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=2 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/4mr_t2/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=18.29s
+
+[58/94] === 4mr_t8  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=4M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=8 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/4mr_t8/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=35.85s
+
+[59/94] === 4mw_t1  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=4M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=1 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/4mw_t1/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.20s
+
+[60/94] === 4mw_t2  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=4M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=2 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/4mw_t2/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.03s
+
+[61/94] === 4mw_t8  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=4M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=8 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/4mw_t8/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.78s
+
+[62/94] === 64mr_t1  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=1 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mr_t1/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=13.36s
+
+[63/94] === 64mr_t2  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=2 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mr_t2/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=20.70s
+
+[64/94] === 64mr_t8  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=8 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mr_t8/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=36.13s
+
+[65/94] === 64mw_t1  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=1 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mw_t1/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.43s
+
+[66/94] === 64mw_t2  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=2 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mw_t2/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.65s
+
+[67/94] === 64mw_t8  [thread_sweep] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=1000T --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=8 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/64mw_t8/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.82s
+
+[68/94] === 32kn  [cpu_side] ===
+    stress: sysbench memory --memory-block-size=32K --memory-total-size=1000T --memory-oper=none --memory-access-mode=seq --memory-scope=local --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/32kn/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=8.30s
+
+[69/94] === 32kn_t8  [cpu_side] ===
+    stress: sysbench memory --memory-block-size=32K --memory-total-size=1000T --memory-oper=none --memory-access-mode=seq --memory-scope=local --threads=8 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/32kn_t8/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.60s
+
+[70/94] === 32kn_t16  [cpu_side] ===
+    stress: sysbench memory --memory-block-size=32K --memory-total-size=1000T --memory-oper=none --memory-access-mode=seq --memory-scope=local --threads=16 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/32kn_t16/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.94s
+
+[71/94] === cpu_prime_t1  [cpu_side] ===
+    stress: sysbench cpu --cpu-max-prime=20000 --threads=1 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/cpu_prime_t1/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=8.32s
+
+[72/94] === cpu_prime_t2  [cpu_side] ===
+    stress: sysbench cpu --cpu-max-prime=20000 --threads=2 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/cpu_prime_t2/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=8.22s
+
+[73/94] === cpu_prime_t4  [cpu_side] ===
+    stress: sysbench cpu --cpu-max-prime=20000 --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/cpu_prime_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.57s
+
+[74/94] === cpu_prime_t8  [cpu_side] ===
+    stress: sysbench cpu --cpu-max-prime=20000 --threads=8 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/cpu_prime_t8/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.58s
+
+[75/94] === cpu_prime_t16  [cpu_side] ===
+    stress: sysbench cpu --cpu-max-prime=20000 --threads=16 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/cpu_prime_t16/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=8.94s
+
+[76/94] === mutex1_t2  [cpu_side] ===
+    stress: sysbench mutex --mutex-num=1 --threads=2 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/mutex1_t2/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.47s
+
+[77/94] === mutex4096_t2  [cpu_side] ===
+    stress: sysbench mutex --mutex-num=4096 --threads=2 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/mutex4096_t2/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.72s
+
+[78/94] === mutex1_t4  [cpu_side] ===
+    stress: sysbench mutex --mutex-num=1 --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/mutex1_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.42s
+
+[79/94] === mutex4096_t4  [cpu_side] ===
+    stress: sysbench mutex --mutex-num=4096 --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/mutex4096_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=9.58s
+
+[80/94] === mutex1_t8  [cpu_side] ===
+    stress: sysbench mutex --mutex-num=1 --threads=8 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/mutex1_t8/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=8.19s
+
+[81/94] === mutex4096_t8  [cpu_side] ===
+    stress: sysbench mutex --mutex-num=4096 --threads=8 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/mutex4096_t8/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.42s
+
+[82/94] === mutex1_t16  [cpu_side] ===
+    stress: sysbench mutex --mutex-num=1 --threads=16 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/mutex1_t16/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.52s
+
+[83/94] === mutex4096_t16  [cpu_side] ===
+    stress: sysbench mutex --mutex-num=4096 --threads=16 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/mutex4096_t16/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=8.21s
+
+[84/94] === threads_t4  [cpu_side] ===
+    stress: sysbench threads --thread-yields=100 --thread-locks=8 --threads=4 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/threads_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.63s
+
+[85/94] === threads_t16  [cpu_side] ===
+    stress: sysbench threads --thread-yields=100 --thread-locks=8 --threads=16 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/threads_t16/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.40s
+
+[86/94] === threads_t64  [cpu_side] ===
+    stress: sysbench threads --thread-yields=100 --thread-locks=8 --threads=64 --events=0 --time=3600 --report-interval=1 run 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/threads_t64/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.54s
+
+[87/94] === pf_16mw_t4  [pagefault] ===
+    stress: sysbench memory --memory-block-size=16M --memory-total-size=16M --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --time=0 run   # looped until stopped
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/pf_16mw_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=15.28s
+
+[88/94] === pf_64mw_t4  [pagefault] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=64M --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --time=0 run   # looped until stopped
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/pf_64mw_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=9.70s
+
+[89/94] === pf_256mw_t4  [pagefault] ===
+    stress: sysbench memory --memory-block-size=256M --memory-total-size=256M --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=4 --time=0 run   # looped until stopped
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/pf_256mw_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=9.56s
+
+[90/94] === pf_64mw_t1  [pagefault] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=64M --memory-oper=write --memory-access-mode=seq --memory-scope=local --threads=1 --time=0 run   # looped until stopped
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/pf_64mw_t1/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=9.38s
+
+[91/94] === pf_64mr_t4  [pagefault] ===
+    stress: sysbench memory --memory-block-size=64M --memory-total-size=64M --memory-oper=read --memory-access-mode=seq --memory-scope=local --threads=4 --time=0 run   # looped until stopped
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/pf_64mr_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=9.55s
+
+[92/94] === ng_fault_t4  [pagefault] ===
+    stress: stress-ng --fault 4 --timeout 3600s --metrics-brief 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/ng_fault_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=7.67s
+
+[93/94] === ng_mmap_t4  [pagefault] ===
+    stress: stress-ng --mmap 4 --mmap-bytes 256M --timeout 3600s --metrics-brief 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/ng_mmap_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=10.94s
+
+[94/94] === ng_vm_t4  [pagefault] ===
+    stress: stress-ng --vm 4 --vm-bytes 256M --vm-method write64 --timeout 3600s --metrics-brief 
+    [start] DVFS profiler + V3D counter monitor
+    [warmup] 3s with stressor running
+    [gpu] running gpu_task (timeout 900s, output -> /home/pi/mempi_repo/data/ng_vm_t4/gpu_task.txt)
+    [stop] gpu_task exited (rc=0); cooldown 3s, then stopping stressor and monitors
+    done: gpu_task rc=0 wall=14.57s
+
+All done. Results in /home/pi/mempi_repo/data/<name>/
