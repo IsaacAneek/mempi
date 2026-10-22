@@ -6,3 +6,5 @@ compile_tasks.py
 fix_and_compile.py
 generate_tasks.py
 /misc
+/analysis/__pycache__
+/analysis/plots
