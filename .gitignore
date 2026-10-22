@@ -5,3 +5,4 @@ bin/
 compile_tasks.py
 fix_and_compile.py
 generate_tasks.py
+/misc
