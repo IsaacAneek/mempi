@@ -22,49 +22,152 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 # Folder naming convention  →  stress parameters
 # ---------------------------------------------------------------------------
 
-def parse_folder_name(name):
-    """
-    Parse a folder name like '4mr', '16kr', '16kr_rnd' into structured params.
-    Returns dict with keys: block_size_str, block_bytes, oper, access.
-    """
-    if name == "baseline":
-        return {
-            "name": "baseline",
-            "block_size_str": "-",
-            "block_bytes": 0,
-            "oper": "none",
-            "access": "seq",
-            "category": "baseline",
-        }
+# ---------------------------------------------------------------------------
+# Folder & Scenario Parameter Parsing
+# ---------------------------------------------------------------------------
 
-    # e.g. 4mr  →  block=4m oper=r
-    #      16kr →  block=16k oper=r
-    #      16kr_rnd → block=16k oper=r access=rnd
-    m = re.match(r"^(\d+)(k|m)(r|w|rw)(?:_(seq|rnd))?$", name, re.IGNORECASE)
-    if not m:
-        return None
+def parse_block_bytes(block_str):
+    """Convert block string (e.g., '16k', '4m', '256K') to integer bytes."""
+    if not block_str or block_str in ("-", "none", "0"):
+        return 0
+    m = re.match(r"^(\d+)\s*(k|m|g)?i?b?$", str(block_str).strip(), re.IGNORECASE)
+    if m:
+        num, unit = m.groups()
+        num = int(num)
+        unit = (unit or "").lower()
+        if unit == "k":
+            return num * 1024
+        elif unit == "m":
+            return num * 1024 * 1024
+        elif unit == "g":
+            return num * 1024 * 1024 * 1024
+        return num
+    return 0
 
-    num, unit, oper, access = m.groups()
-    num = int(num)
-    unit = unit.lower()
-    block_bytes = num * (1024 if unit == "k" else 1024 * 1024)
-    oper_map = {"r": "read", "w": "write", "rw": "readwrite"}
-    # Category based on RPi5 cache hierarchy (L1=256K, L2=2M, L3=2M)
-    if block_bytes <= 256 * 1024:
-        cat = "cache_resident"
-    elif block_bytes <= 2 * 1024 * 1024:
-        cat = "l2_l3_resident"
+
+def parse_scenario(folder, meta=None):
+    """
+    Parse scenario metadata. Uses meta.txt if available, and falls back to folder name.
+    Supports all 9 benchmark categories:
+      - baseline
+      - cache_resident  (e.g., 16kr, 256kr, 1mr)
+      - cache_evict     (e.g., 2mr, 4mr)
+      - dram_stream     (e.g., 8mr, 64mw)
+      - dram_random     (e.g., 64mw_rnd, 8mr_rnd)
+      - coherence       (e.g., 32kw_t2_g, 256kw_g)
+      - thread_sweep    (e.g., 4mr_t2, 64mw_t8)
+      - cpu_side        (e.g., 32kn, cpu_prime_t8, mutex1_t4, threads_t16)
+      - pagefault       (e.g., pf_64mw_t4, ng_fault_t4)
+    """
+    if meta is None:
+        try:
+            meta = load_meta(folder)
+        except Exception:
+            meta = {}
+
+    name = folder
+    category = meta.get("category", "").strip()
+    mode = meta.get("mode", "").strip()
+    block_str = meta.get("block", "-").strip()
+    oper = meta.get("oper", "-").strip()
+    access = meta.get("access", "-").strip()
+    threads_val = meta.get("threads", "-").strip()
+    threads = int(threads_val) if threads_val.isdigit() else 4
+    scope = meta.get("scope", "local").strip()
+
+    # Fallback / inference if meta.txt did not have complete fields
+    if not category:
+        if name == "baseline":
+            category = "baseline"
+            mode = "none"
+        elif name.startswith("mutex"):
+            category = "cpu_side"
+            mode = "mutex"
+        elif name.startswith("cpu_prime"):
+            category = "cpu_side"
+            mode = "cpu"
+        elif name.startswith("threads_"):
+            category = "cpu_side"
+            mode = "threads"
+        elif name.startswith("pf_"):
+            category = "pagefault"
+            mode = "pf"
+        elif name.startswith("ng_"):
+            category = "pagefault"
+            mode = "ngfault"
+        elif "_g" in name:
+            category = "coherence"
+            scope = "global"
+        elif "_t" in name:
+            category = "thread_sweep"
+        elif re.search(r"\d+(?:k|m)n", name):
+            category = "cpu_side"
+            oper = "none"
+        else:
+            category = "cache_resident"
+
+    if block_str == "-" and mode not in ("mutex", "cpu", "threads", "ngfault"):
+        m_block = re.search(r"(\d+)(k|m|g)", name, re.IGNORECASE)
+        if m_block:
+            block_str = m_block.group(1) + m_block.group(2).lower()
+
+    if oper == "-":
+        if "rw" in name:
+            oper = "readwrite"
+        elif re.search(r"\d+(?:k|m)r", name):
+            oper = "read"
+        elif re.search(r"\d+(?:k|m)w", name):
+            oper = "write"
+        elif re.search(r"\d+(?:k|m)n", name):
+            oper = "none"
+
+    if access == "-":
+        access = "rnd" if "rnd" in name else "seq"
+
+    if "_g" in name:
+        scope = "global"
+
+    m_t = re.search(r"_t(\d+)", name)
+    if m_t:
+        threads = int(m_t.group(1))
+
+    block_bytes = parse_block_bytes(block_str)
+    block_disp = block_str.upper() if block_str != "-" else "-"
+
+    # Cache tier classification based on RPi5 Cortex-A76 cache sizes:
+    # L1 = 256 KiB, L2 = 2 MiB, L3 = 2 MiB shared
+    if category == "baseline":
+        cache_tier = "baseline"
+    elif category in ("cpu_side", "pagefault"):
+        cache_tier = category
+    elif block_bytes > 0:
+        if block_bytes <= 256 * 1024:
+            cache_tier = "cache_resident"
+        elif block_bytes <= 2 * 1024 * 1024:
+            cache_tier = "l2_l3_resident"
+        else:
+            cache_tier = "cache_evict"
     else:
-        cat = "cache_evict"
+        cache_tier = category
 
     return {
         "name": name,
-        "block_size_str": f"{num}{unit.upper()}",
+        "category": category,
+        "cache_tier": cache_tier,
+        "mode": mode,
+        "block_str": block_disp,
+        "block_size_str": block_disp,
         "block_bytes": block_bytes,
-        "oper": oper_map.get(oper, oper),
-        "access": access or "seq",
-        "category": cat,
+        "oper": oper,
+        "access": access,
+        "threads": threads,
+        "scope": scope,
     }
+
+
+def parse_folder_name(name):
+    """Backwards compatibility alias for parse_scenario."""
+    return parse_scenario(name)
 
 
 # ---------------------------------------------------------------------------
@@ -283,13 +386,11 @@ def load_all():
     """
     results = []
     for folder in discover_scenarios():
-        params = parse_folder_name(folder)
-        if params is None:
-            continue
         try:
             meta = load_meta(folder)
-        except FileNotFoundError:
+        except (FileNotFoundError, Exception):
             meta = {}
+        params = parse_scenario(folder, meta)
         gpu = load_gpu_task(folder)
         sb_info, sb_tp = load_sysbench(folder)
         dvfs = load_dvfs(folder)
@@ -310,15 +411,14 @@ def load_all():
 if __name__ == "__main__":
     # Quick test
     all_s = load_all()
-    print(f"{'Folder':<12s} {'Block':>6s} {'E2E (ms)':>10s} {'Compute (ms)':>12s} {'Dispatch (ms)':>14s} {'Disp/iter (us)':>15s} {'Disp %':>8s}")
-    print("-" * 82)
+    print(f"{'Folder':<14s} {'Category':<15s} {'Mode':<8s} {'Block':>6s} {'Thr':>4s} {'Scope':<7s} {'E2E (ms)':>10s} {'Comp (ms)':>10s} {'Disp (ms)':>10s} {'Disp%':>7s}")
+    print("-" * 105)
     for s in all_s:
         p = s["params"]
         g = s["gpu"]
         e2e = g.get('e2e_ms', 0)
         comp = g.get('compute_ms', 0)
         disp = g.get('dispatch_latency_ms', 0)
-        disp_us = g.get('dispatch_latency_us', 0)
         disp_pct = g.get('dispatch_ratio_pct', 0)
-        print(f"{s['folder']:<12s} {p['block_size_str']:>6s} {e2e:>10.1f} {comp:>12.1f} {disp:>14.3f} {disp_us:>15.3f} {disp_pct:>7.3f}%")
+        print(f"{s['folder']:<14s} {p['category']:<15s} {p['mode']:<8s} {p['block_str']:>6s} {str(p['threads']):>4s} {p['scope']:<7s} {e2e:>10.1f} {comp:>10.1f} {disp:>10.3f} {disp_pct:>6.3f}%")
 
