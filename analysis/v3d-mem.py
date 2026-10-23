@@ -397,29 +397,61 @@ def main():
     plt.close(fig)
 
     # ── Plot 7: Hardware Contention vs Compute & E2E-GPU Residual (EVERY Scenario) ─
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6.5))
 
     axi_waits_b = [get_counter(n, "AXI-read-wait-cycles") / 1e9 for n in names]
     comp_lats = [d["gpu"]["compute_ms"] for d in data]
     disp_lats = [d["gpu"]["e2e_minus_gpu_ms"] for d in data]
 
-    # Left: AXI Read Wait Cycles vs Compute Latency
-    for n, c, w, comp in zip(names, colors_list, axi_waits_b, comp_lats):
-        ax1.scatter(w, comp, s=160, color=c, edgecolors="black", zorder=4)
-        ax1.annotate(f" {n}", (w, comp), fontsize=7.5, fontweight="bold")
+    # Left: Dual-Axis AXI Read Wait Cycles vs Compute Latency across all scenarios
+    ax1_twin = ax1.twinx()
+    b_axi1 = ax1.bar(x, axi_waits_b, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
+                     label="AXI Read Wait (Billions)")
+    l_c1 = ax1_twin.plot(x, comp_lats, "ro-", markersize=6.5, linewidth=1.8,
+                         label="Compute Latency (ms)")
 
-    ax1.set_xlabel("AXI Read Wait Cycles (billions)")
-    ax1.set_ylabel("Compute Latency (ms)")
+    for bar, w in zip(b_axi1, axi_waits_b):
+        if w > 0.05:
+            ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
+                     f"{w:.1f}B", ha="center", va="bottom", fontsize=7, fontweight="bold")
+
+    for i, c_lat in enumerate(comp_lats):
+        ax1_twin.text(i, c_lat + 400, f"{c_lat:.0f}", ha="center", va="bottom",
+                      fontsize=7, fontweight="bold", color="red")
+
+    ax1.set_xlabel("Interference Scenario (All Parameters)")
+    ax1.set_ylabel("AXI Read Wait Cycles (billions)", color="black")
+    ax1_twin.set_ylabel("Compute Latency (ms)", color="red")
     ax1.set_title("AXI Read Wait Cycles vs GPU Compute Latency", fontsize=11)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
+    lines_1 = [b_axi1, l_c1[0]]
+    ax1.legend(lines_1, [l.get_label() for l in lines_1], loc="upper left", fontsize=8)
 
-    # Right: AXI Read Wait Cycles vs E2E-GPU Residual (E2E - GPU timer)
-    for n, c, w, disp in zip(names, colors_list, axi_waits_b, disp_lats):
-        ax2.scatter(w, disp, s=160, color=c, edgecolors="black", zorder=4)
-        ax2.annotate(f" {n}\n ({disp:.2f}ms)", (w, disp), fontsize=7.5, fontweight="bold")
+    # Right: Dual-Axis AXI Read Wait Cycles vs E2E-GPU Residual across all scenarios
+    ax2_twin = ax2.twinx()
+    b_axi2 = ax2.bar(x, axi_waits_b, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
+                     label="AXI Read Wait (Billions)")
+    l_d2 = ax2_twin.plot(x, disp_lats, "s--", color="#D84315", markersize=6.5, linewidth=1.8,
+                         label="E2E-GPU Residual (ms)")
 
-    ax2.set_xlabel("AXI Read Wait Cycles (billions)")
-    ax2.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer")
+    for bar, w in zip(b_axi2, axi_waits_b):
+        if w > 0.05:
+            ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
+                     f"{w:.1f}B", ha="center", va="bottom", fontsize=7, fontweight="bold")
+
+    for i, d_lat in enumerate(disp_lats):
+        ax2_twin.text(i, d_lat + 0.08, f"{d_lat:.2f}", ha="center", va="bottom",
+                      fontsize=7, fontweight="bold", color="#D84315")
+
+    ax2.set_xlabel("Interference Scenario (All Parameters)")
+    ax2.set_ylabel("AXI Read Wait Cycles (billions)", color="black")
+    ax2_twin.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer", color="#D84315")
     ax2.set_title("AXI Read Wait Cycles vs E2E-GPU Residual", fontsize=11)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
+    lines_2 = [b_axi2, l_d2[0]]
+    ax2.legend(lines_2, [l.get_label() for l in lines_2], loc="upper left", fontsize=8)
 
     fig.suptitle("Interconnect Contention: Impact on GPU Kernel vs E2E-GPU Residual (All Parameters)",
                  fontsize=13, fontweight="bold")

@@ -20,8 +20,8 @@ Visualizations generated (saved to analysis/plots/):
      E2E-GPU Residual & Residual Ratio (× baseline) for EVERY single scenario.
   4. category_cpu_vs_memory_all.png:
      Direct side-by-side comparison of ALL CPU-side, Pagefault, Cache, and DRAM scenarios.
-  5. category_scatter_compute_vs_residual.png:
-     Scatter map of Compute Degradation vs Residual Ratio for EVERY scenario.
+  5. category_comparison_compute_vs_residual.png:
+     Paired bar comparison of Compute Degradation vs Residual Ratio for EVERY scenario.
 """
 
 import os
@@ -310,27 +310,35 @@ def main():
     print(f"  → {PLOT_DIR}/category_cpu_vs_memory_all.png")
     plt.close(fig)
 
-    # ── Plot 5: Scatter of Compute Degradation vs Residual Ratio ────
-    fig, ax = plt.subplots(figsize=(11, 7))
+    # ── Plot 5: Paired Bar Comparison: Compute Degradation vs Residual Degradation ──
+    fig, ax = plt.subplots(figsize=(14, 7))
 
-    for d, c, c_deg, d_deg in zip(data, colors_list, comp_deg_vals, disp_deg_vals):
-        name = d["params"]["name"]
-        cat = d["params"]["category"]
-        ax.scatter(c_deg, d_deg, s=200, color=c, edgecolors="black", linewidth=1.2, zorder=4)
-        ax.annotate(f" {name} ({cat})", (c_deg, d_deg), fontsize=8, fontweight="bold")
+    bar_h = 0.35
+    y_pos = np.arange(len(data))
 
-    ax.axvline(1.0, color="green", linestyle="--", alpha=0.6, label="1.0× Baseline Compute")
-    ax.axhline(1.0, color="orange", linestyle="--", alpha=0.6, label="1.0× Baseline Residual")
+    b1 = ax.barh(y_pos - bar_h / 2, comp_deg_vals, bar_h, label="Compute Degradation (× baseline)",
+                 color="#EF5350", edgecolor="black", linewidth=0.5)
+    b2 = ax.barh(y_pos + bar_h / 2, disp_deg_vals, bar_h, label="E2E-GPU Residual Degradation (× baseline)",
+                 color="#FFA726", edgecolor="black", linewidth=0.5)
 
-    ax.set_xlabel("Compute Degradation Factor (× baseline)")
-    ax.set_ylabel("Residual Ratio Factor (× baseline)")
-    ax.set_title("Correlation Map: Compute Degradation vs Residual Ratio Across ALL Scenarios\n"
-                 "Shows how each interference parameter independently impacts GPU execution vs E2E-GPU residual",
-                 fontsize=12)
-    ax.legend(loc="upper left")
+    for bar, val in zip(b1, comp_deg_vals):
+        ax.text(bar.get_width() + 0.15, bar.get_y() + bar.get_height() / 2,
+                f"{val:.2f}×", ha="left", va="center", fontsize=7.5, fontweight="bold", color="#B71C1C")
+
+    for bar, val in zip(b2, disp_deg_vals):
+        ax.text(bar.get_width() + 0.15, bar.get_y() + bar.get_height() / 2,
+                f"{val:.1f}×", ha="left", va="center", fontsize=7.5, fontweight="bold", color="#E65100")
+
+    ax.axvline(1.0, color="green", linestyle="--", linewidth=1.5, alpha=0.8, label="1.0× Baseline")
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels([f"{n} ({d['params']['category']})" for n, d in zip(names, data)], fontsize=8)
+    ax.set_xlabel("Degradation Factor (× Baseline)")
+    ax.set_title("Direct Comparison: Compute Degradation vs Residual Degradation Across ALL Parameters",
+                 fontsize=12, fontweight="bold")
+    ax.legend(loc="lower right", fontsize=9)
     plt.tight_layout()
-    fig.savefig(os.path.join(PLOT_DIR, "category_scatter_compute_vs_residual.png"), dpi=150)
-    print(f"  → {PLOT_DIR}/category_scatter_compute_vs_residual.png")
+    fig.savefig(os.path.join(PLOT_DIR, "category_comparison_compute_vs_residual.png"), dpi=150)
+    print(f"  → {PLOT_DIR}/category_comparison_compute_vs_residual.png")
     plt.close(fig)
 
     print("\n Unbiased Category Analysis completed successfully for ALL parameters!")

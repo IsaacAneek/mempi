@@ -203,41 +203,47 @@ def main():
     print(f"  → {PLOT_DIR}/dvfs_gpu_timeline.png")
     plt.close(fig)
 
-    # ── Plot 2: V3D Clock Distribution Across EVERY Scenario ─────────────
-    fig, ax = plt.subplots(figsize=(13, 5.5))
-    positions = []
-    tick_labels = []
+    # ── Plot 2: V3D Clock Stability Across EVERY Scenario ────────────────
+    fig, ax = plt.subplots(figsize=(14, 5.5))
+    mean_clocks = []
+    min_clocks = []
+    max_clocks = []
 
-    for i, d in enumerate(data):
+    for d in data:
         dvfs = d["dvfs"]
         active = get_gpu_active_dvfs(dvfs)
-        name = d["params"]["name"]
-        color = scenario_color(d["params"])
-
         if active.empty:
-            v3d_vals = dvfs[dvfs["v3d_hz"] > 0]["v3d_hz"].values / 1e6 if not dvfs.empty else []
+            v3d_vals = dvfs[dvfs["v3d_hz"] > 0]["v3d_hz"].values / 1e6 if not dvfs.empty else [960.0]
         else:
             v3d_vals = active["v3d_hz"].values / 1e6
+        if len(v3d_vals) == 0:
+            v3d_vals = [960.0]
 
-        if len(v3d_vals) > 0:
-            ax.boxplot([v3d_vals], positions=[i], widths=0.45, patch_artist=True,
-                       boxprops=dict(facecolor=color, alpha=0.6),
-                       medianprops=dict(color="black", linewidth=2))
+        mean_clocks.append(float(np.mean(v3d_vals)))
+        min_clocks.append(float(np.min(v3d_vals)))
+        max_clocks.append(float(np.max(v3d_vals)))
 
-        positions.append(i)
-        tick_labels.append(short_labels[i])
+    yerr_lower = np.maximum(np.array(mean_clocks) - np.array(min_clocks), 0)
+    yerr_upper = np.maximum(np.array(max_clocks) - np.array(mean_clocks), 0)
+    b_clk = ax.bar(x, mean_clocks, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
+                   yerr=[yerr_lower, yerr_upper], capsize=4, error_kw=dict(lw=1.2, capthick=1.2, color="black"))
 
-    ax.set_xticks(positions)
-    ax.set_xticklabels(tick_labels, fontsize=7.5, rotation=25, ha="right")
+    for bar, m_clk in zip(b_clk, mean_clocks):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 15,
+                f"{m_clk:.0f} MHz", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(short_labels, fontsize=7.5, rotation=25, ha="right")
     ax.set_ylabel("V3D Clock Frequency (MHz)")
-    ax.set_title("V3D GPU Clock Frequency Distribution Across All Scenarios", fontsize=12)
+    ax.set_ylim(0, 1150)
+    ax.set_title("V3D GPU Clock Frequency (Mean with Min-Max Range Error Bars) Across All Scenarios", fontsize=11)
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "dvfs_gpu_v3d_clock_dist.png"), dpi=150)
     print(f"  → {PLOT_DIR}/dvfs_gpu_v3d_clock_dist.png")
     plt.close(fig)
 
     # ── Plot 3: Temperature vs Compute Latency and E2E-GPU Residual ──────
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6.5))
 
     avg_temps = []
     max_temps = []
@@ -250,36 +256,67 @@ def main():
         if active.empty and not dvfs.empty:
             active = dvfs[dvfs["v3d_hz"] > 0]
         if not active.empty:
-            avg_temps.append(active["temp_c"].mean())
-            max_temps.append(active["temp_c"].max())
+            avg_temps.append(float(active["temp_c"].mean()))
+            max_temps.append(float(active["temp_c"].max()))
         elif not dvfs.empty:
-            avg_temps.append(dvfs["temp_c"].mean())
-            max_temps.append(dvfs["temp_c"].max())
+            avg_temps.append(float(dvfs["temp_c"].mean()))
+            max_temps.append(float(dvfs["temp_c"].max()))
         else:
             avg_temps.append(float(d["meta"].get("temp_before_c", 50.0)))
             max_temps.append(float(d["meta"].get("temp_after_c", 50.0)))
 
-    # Left: Temp vs Compute Latency
-    for d, c, t_avg, t_max, comp in zip(data, colors_list, avg_temps, max_temps, comp_lats):
-        name = d["params"]["name"]
-        ax1.scatter(t_avg, comp, s=160, color=c, edgecolors="black", zorder=4)
-        ax1.plot([t_avg, t_max], [comp, comp], "-", color=c, alpha=0.5, linewidth=2)
-        ax1.annotate(f" {name}\n ({comp:.0f}ms)", (t_avg, comp), fontsize=7.5, fontweight="bold")
+    temp_err_upper = np.maximum(np.array(max_temps) - np.array(avg_temps), 0)
 
-    ax1.set_xlabel("Average Temperature During Run (°C)")
-    ax1.set_ylabel("Compute Latency (ms)")
-    ax1.set_title("Temperature vs GPU Compute Latency (All Scenarios)", fontsize=11)
+    # Left: Dual-Axis Temperature vs Compute Latency across all scenarios
+    ax1_twin = ax1.twinx()
+    b_t1 = ax1.bar(x, avg_temps, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
+                   yerr=[np.zeros(len(avg_temps)), temp_err_upper], capsize=3,
+                   error_kw=dict(lw=1.0, color="black"), label="Avg Temp (°C, cap=max)")
+    l_c1 = ax1_twin.plot(x, comp_lats, "ro-", markersize=6.5, linewidth=1.8, label="Compute Latency (ms)")
 
-    # Right: Temp vs E2E-GPU Residual (E2E - GPU timer)
-    for d, c, t_avg, t_max, disp in zip(data, colors_list, avg_temps, max_temps, disp_lats):
-        name = d["params"]["name"]
-        ax2.scatter(t_avg, disp, s=160, color=c, edgecolors="black", zorder=4)
-        ax2.plot([t_avg, t_max], [disp, disp], "-", color=c, alpha=0.5, linewidth=2)
-        ax2.annotate(f" {name}\n ({disp:.3f}ms)", (t_avg, disp), fontsize=7.5, fontweight="bold")
+    for bar, t_avg in zip(b_t1, avg_temps):
+        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1.5,
+                 f"{t_avg:.1f}°", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
 
-    ax2.set_xlabel("Average Temperature During Run (°C)")
-    ax2.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer")
-    ax2.set_title("Temperature vs E2E-GPU Residual (All Scenarios)", fontsize=11)
+    for i, c_lat in enumerate(comp_lats):
+        ax1_twin.text(i, c_lat + 400, f"{c_lat:.0f}", ha="center", va="bottom",
+                      fontsize=7, fontweight="bold", color="red")
+
+    ax1.set_xlabel("Interference Scenario (All Parameters)")
+    ax1.set_ylabel("SoC Temperature (°C)", color="black")
+    ax1_twin.set_ylabel("Compute Latency (ms)", color="red")
+    ax1.set_title("Temperature vs GPU Compute Latency Across All Scenarios", fontsize=11)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(short_labels, fontsize=7.5, rotation=25, ha="right")
+    ax1.set_ylim(0, 95)
+    lines_1 = [b_t1, l_c1[0]]
+    ax1.legend(lines_1, [l.get_label() for l in lines_1], loc="upper left", fontsize=8)
+
+    # Right: Dual-Axis Temperature vs E2E-GPU Residual across all scenarios
+    ax2_twin = ax2.twinx()
+    b_t2 = ax2.bar(x, avg_temps, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
+                   yerr=[np.zeros(len(avg_temps)), temp_err_upper], capsize=3,
+                   error_kw=dict(lw=1.0, color="black"), label="Avg Temp (°C, cap=max)")
+    l_d2 = ax2_twin.plot(x, disp_lats, "s--", color="#D84315", markersize=6.5, linewidth=1.8,
+                         label="E2E-GPU Residual (ms)")
+
+    for bar, t_avg in zip(b_t2, avg_temps):
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1.5,
+                 f"{t_avg:.1f}°", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
+
+    for i, d_lat in enumerate(disp_lats):
+        ax2_twin.text(i, d_lat + 0.08, f"{d_lat:.2f}", ha="center", va="bottom",
+                      fontsize=7, fontweight="bold", color="#D84315")
+
+    ax2.set_xlabel("Interference Scenario (All Parameters)")
+    ax2.set_ylabel("SoC Temperature (°C)", color="black")
+    ax2_twin.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer", color="#D84315")
+    ax2.set_title("Temperature vs E2E-GPU Residual Across All Scenarios", fontsize=11)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(short_labels, fontsize=7.5, rotation=25, ha="right")
+    ax2.set_ylim(0, 95)
+    lines_2 = [b_t2, l_d2[0]]
+    ax2.legend(lines_2, [l.get_label() for l in lines_2], loc="upper left", fontsize=8)
 
     fig.suptitle("SoC Thermal State vs Compute and E2E-GPU Residuals Across All Parameters", fontsize=13, fontweight="bold")
     plt.tight_layout()

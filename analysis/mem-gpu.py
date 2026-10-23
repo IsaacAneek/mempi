@@ -22,7 +22,7 @@ Plots generated (saved to analysis/plots/):
   2. mem_gpu_degradation_comparison.png:
      Grouped degradation factor (× baseline) comparing E2E, Compute, and E2E-GPU Residual across EVERY scenario.
   3. mem_gpu_residual_vs_compute.png:
-     Scatter correlation of Residual vs Compute Latency & E2E-GPU Residual (% of E2E) across EVERY scenario.
+     Dual-axis comparison of Compute Latency vs E2E-GPU Residual & Overhead Ratio (% of E2E) across EVERY scenario.
   4. mem_gpu_blocksize_vs_latencies.png:
      Dual-panel: All scenarios latency profile (left) + Block size cache hierarchy progression with CPU-side reference (right).
   5. mem_gpu_bandwidth_vs_latency.png:
@@ -226,17 +226,34 @@ def main():
     plt.close(fig)
 
     # ── Plot 3: E2E-GPU Residual vs Compute Latency & Ratio (EVERY Scenario) ──
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6.5))
 
-    # Scatter: Compute Latency vs E2E-GPU Residual
-    for d, c, g, disp in zip(data, colors, comp_vals, disp_vals):
-        name = d["params"]["name"]
-        ax1.scatter(g, disp, s=180, color=c, edgecolors="black", linewidth=1.2, zorder=4)
-        ax1.annotate(f" {name}\n ({disp:.2f}ms)", (g, disp), fontsize=7.5, fontweight="bold")
+    # Left: Dual-Axis Compute Latency vs E2E-GPU Residual across all scenarios
+    ax1_twin = ax1.twinx()
+    p1 = ax1.bar(x, comp_vals, bar_w * 1.5, color=colors, edgecolor="black", linewidth=0.6,
+                 label="Compute Latency (ms)")
+    p2 = ax1_twin.plot(x, disp_vals, "o--", color="#D84315", markersize=6.5, linewidth=1.8,
+                       label="E2E-GPU Residual (ms)")
 
-    ax1.set_xlabel("Compute Latency (GPU elapsed ms)")
-    ax1.set_ylabel("E2E-GPU Residual (E2E - GPU timer, ms)")
-    ax1.set_title("E2E-GPU Residual vs Compute Latency (All Scenarios)", fontsize=11)
+    for bar, val in zip(p1, comp_vals):
+        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 300,
+                 f"{val:.0f}", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
+
+    for i, val in enumerate(disp_vals):
+        ax1_twin.text(i, val + 0.08, f"{val:.2f}", ha="center", va="bottom",
+                      fontsize=7, fontweight="bold", color="#D84315")
+
+    ax1.set_xlabel("Interference Scenario (All Parameters)")
+    ax1.set_ylabel("Compute Latency (ms)", color="black")
+    ax1_twin.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer", color="#D84315")
+    ax1.set_title("Compute Latency vs E2E-GPU Residual Across All Scenarios", fontsize=11)
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
+
+    # Combined legend
+    lines = [p1, p2[0]]
+    leg_labels = [l.get_label() for l in lines]
+    ax1.legend(lines, leg_labels, loc="upper left", fontsize=8.5)
 
     # Right: E2E-GPU Residual as % of Total E2E Latency
     bars_pct = ax2.bar(x, disp_pct_vals, bar_w * 1.5, color=colors, edgecolor="black", linewidth=0.5)
@@ -250,7 +267,7 @@ def main():
     ax2.set_xticks(x)
     ax2.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
 
-    fig.suptitle("E2E-GPU Residual Correlation with GPU Compute Latency Across All Scenarios", fontsize=13, fontweight="bold")
+    fig.suptitle("E2E-GPU Residual & GPU Compute Latency Comparison Across All Scenarios", fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_residual_vs_compute.png"), dpi=150)
     print(f"  → {PLOT_DIR}/mem_gpu_residual_vs_compute.png")
