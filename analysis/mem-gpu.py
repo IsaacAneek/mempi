@@ -6,27 +6,27 @@ Analyzes and visualizes EVERY parameter and interference scenario in the dataset
   - Baseline (isolated GPU execution)
   - CPU-side contentions (mutex lock contention, prime computation, scheduler thread storms)
   - Page-fault stressors (stress-ng fault/mmap, repeated page table traps)
-  - Cache-resident memory workloads (16K, 128K, 256K)
-  - L2/L3-resident workloads (1M, 2M)
-  - Cache-evicting DRAM streaming & random access (4M, 8M, 64M)
+  - Small-working-set memory workloads (per-thread blocks <= 256K, aggregate <= 2 MiB)
+  - Cache-pressure workloads (aggregate block x threads above the 2 MiB L3, e.g. 1M x 4)
+  - Large-working-set DRAM streaming & random access (8M+ per thread)
   - Cache coherence (global shared buffer bouncing) & Thread count sweeps
 
 Evaluates:
-  1. Compute Latency (GPU hardware kernel execution time)
-  2. Dispatch Latency = End-to-End (E2E) - Compute Latency
+  1. GPU timer (GL_TIME_ELAPSED_EXT elapsed time of the batch; includes barriers, not pure shader time)
+  2. E2E-GPU Residual = End-to-End (E2E) - Compute Latency
   3. Total End-to-End (E2E) Latency
 
 Plots generated (saved to analysis/plots/):
   1. mem_gpu_absolute_latency.png:
-     Dual-panel: E2E & Compute Latency (seconds scale) vs Dispatch Latency (ms scale) for EVERY scenario.
+     Dual-panel: E2E & Compute Latency (seconds scale) vs E2E-GPU Residual (ms scale) for EVERY scenario.
   2. mem_gpu_degradation_comparison.png:
-     Grouped degradation factor (× baseline) comparing E2E, Compute, and Dispatch Latency across EVERY scenario.
-  3. mem_gpu_dispatch_vs_compute.png:
-     Scatter correlation of Dispatch vs Compute Latency & Dispatch Overhead (% of E2E) across EVERY scenario.
+     Grouped degradation factor (× baseline) comparing E2E, Compute, and E2E-GPU Residual across EVERY scenario.
+  3. mem_gpu_residual_vs_compute.png:
+     Scatter correlation of Residual vs Compute Latency & E2E-GPU Residual (% of E2E) across EVERY scenario.
   4. mem_gpu_blocksize_vs_latencies.png:
      Dual-panel: All scenarios latency profile (left) + Block size cache hierarchy progression with CPU-side reference (right).
   5. mem_gpu_bandwidth_vs_latency.png:
-     Sysbench memory bandwidth vs Compute and Dispatch Latency across EVERY scenario.
+     Sysbench memory bandwidth vs Compute and E2E-GPU Residual across EVERY scenario.
   6. mem_gpu_throughput_timeseries.png:
      Memory throughput / activity time-series during GPU execution.
 """
@@ -117,7 +117,7 @@ def scenario_label(params):
 def sort_key(d):
     p = d["params"]
     cat_rank = CAT_SORT_ORDER.get(p.get("category"), 99)
-    block_b = p.get("block_bytes", 0)
+    block_b = p.get("footprint_bytes", 0) or p.get("block_bytes", 0)
     name = p.get("name", "")
     return (cat_rank, block_b, name)
 
@@ -139,15 +139,15 @@ def main():
     baseline = next((d for d in data if d["params"]["category"] == "baseline" or d["params"]["name"] == "baseline"), None)
     base_e2e = baseline["gpu"]["e2e_ms"] if baseline else 4120.0
     base_comp = baseline["gpu"]["compute_ms"] if baseline else 4120.0
-    base_disp = baseline["gpu"]["dispatch_latency_ms"] if baseline else 0.170
+    base_disp = baseline["gpu"]["e2e_minus_gpu_ms"] if baseline else 0.170
     if base_disp <= 0:
         base_disp = 0.170
 
     e2e_vals = [d["gpu"]["e2e_ms"] for d in data]
     comp_vals = [d["gpu"]["compute_ms"] for d in data]
-    disp_vals = [d["gpu"]["dispatch_latency_ms"] for d in data]
-    disp_us_vals = [d["gpu"]["dispatch_latency_us"] for d in data]
-    disp_pct_vals = [d["gpu"]["dispatch_ratio_pct"] for d in data]
+    disp_vals = [d["gpu"]["e2e_minus_gpu_ms"] for d in data]
+    disp_us_vals = [d["gpu"]["e2e_minus_gpu_us"] for d in data]
+    disp_pct_vals = [d["gpu"]["e2e_minus_gpu_pct"] for d in data]
 
     x = np.arange(len(data))
     bar_w = 0.38
@@ -173,21 +173,21 @@ def main():
     ax1.legend(loc="upper left")
     ax1.axhline(base_e2e, color="green", linestyle="--", alpha=0.5, linewidth=1, label=f"Baseline: {base_e2e:.0f} ms")
 
-    # Right: Dispatch Latency = E2E - Compute (ms and us per dispatch)
+    # Right: E2E-GPU Residual = E2E - GPU timer (ms and us per dispatch)
     b3 = ax2.bar(x, disp_vals, bar_w * 1.5, color=colors, edgecolor="black", linewidth=0.6)
     for bar, val, val_us in zip(b3, disp_vals, disp_us_vals):
         ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05,
                  f"{val:.3f} ms\n({val_us:.1f} µs)", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
 
     ax2.set_xlabel("Interference Scenario (All Parameters)")
-    ax2.set_ylabel("Dispatch Latency (ms) = E2E - Compute")
-    ax2.set_title("Dispatch Latency (CPU Driver & Synchronization Overhead)\n(Scale: fractions of ms / microseconds)", fontsize=11)
+    ax2.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer")
+    ax2.set_title("E2E - GPU timer (signed residual; NOT a pure CPU dispatch cost)\n(Scale: fractions of ms / microseconds)", fontsize=11)
     ax2.set_xticks(x)
     ax2.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
     ax2.axhline(base_disp, color="green", linestyle="--", alpha=0.5, linewidth=1, label=f"Baseline: {base_disp:.3f} ms")
     ax2.legend(loc="upper left")
 
-    fig.suptitle("GPU Task Latency Breakdown: Compute vs Dispatch Overhead Across EVERY Parameter",
+    fig.suptitle("GPU Task Latency Breakdown: Compute vs E2E-GPU Residual Across EVERY Parameter",
                  fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_absolute_latency.png"), dpi=150)
@@ -203,7 +203,7 @@ def main():
     w3 = 0.26
     b_e2e = ax.bar(x - w3, degr_e2e, w3, label="E2E Degradation (×)", color="#42A5F5", edgecolor="black", linewidth=0.5)
     b_cmp = ax.bar(x, degr_comp, w3, label="Compute Degradation (×)", color="#EF5350", edgecolor="black", linewidth=0.5)
-    b_dsp = ax.bar(x + w3, degr_disp, w3, label="Dispatch Degradation (×) [E2E - Compute]", color="#FFA726", edgecolor="black", linewidth=0.5)
+    b_dsp = ax.bar(x + w3, degr_disp, w3, label="Residual Ratio (×) [E2E - GPU timer]", color="#FFA726", edgecolor="black", linewidth=0.5)
 
     for bar, val in zip(b_e2e, degr_e2e):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.15, f"{val:.1f}×", ha="center", fontsize=7)
@@ -215,7 +215,7 @@ def main():
     ax.axhline(1.0, color="green", linestyle="--", linewidth=1.5, alpha=0.7, label="1.0× Baseline")
     ax.set_xlabel("Interference Scenario (All Parameters)")
     ax.set_ylabel("Degradation Factor (× Baseline)")
-    ax.set_title("Latency Degradation Comparison Across All Parameters: E2E vs Compute vs Dispatch Latency",
+    ax.set_title("Latency Degradation Comparison Across All Parameters: E2E vs Compute vs E2E-GPU Residual",
                  fontsize=12, fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
@@ -225,65 +225,65 @@ def main():
     print(f"  → {PLOT_DIR}/mem_gpu_degradation_comparison.png")
     plt.close(fig)
 
-    # ── Plot 3: Dispatch Latency vs Compute Latency & Ratio (EVERY Scenario) ──
+    # ── Plot 3: E2E-GPU Residual vs Compute Latency & Ratio (EVERY Scenario) ──
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
-    # Scatter: Compute Latency vs Dispatch Latency
+    # Scatter: Compute Latency vs E2E-GPU Residual
     for d, c, g, disp in zip(data, colors, comp_vals, disp_vals):
         name = d["params"]["name"]
         ax1.scatter(g, disp, s=180, color=c, edgecolors="black", linewidth=1.2, zorder=4)
         ax1.annotate(f" {name}\n ({disp:.2f}ms)", (g, disp), fontsize=7.5, fontweight="bold")
 
     ax1.set_xlabel("Compute Latency (GPU elapsed ms)")
-    ax1.set_ylabel("Dispatch Latency (E2E - compute ms)")
-    ax1.set_title("Dispatch Latency vs Compute Latency (All Scenarios)", fontsize=11)
+    ax1.set_ylabel("E2E-GPU Residual (E2E - GPU timer, ms)")
+    ax1.set_title("E2E-GPU Residual vs Compute Latency (All Scenarios)", fontsize=11)
 
-    # Right: Dispatch Latency as % of Total E2E Latency
+    # Right: E2E-GPU Residual as % of Total E2E Latency
     bars_pct = ax2.bar(x, disp_pct_vals, bar_w * 1.5, color=colors, edgecolor="black", linewidth=0.5)
     for bar, val in zip(bars_pct, disp_pct_vals):
         ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.001,
                  f"{val:.3f}%", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
 
     ax2.set_xlabel("Interference Scenario (All Parameters)")
-    ax2.set_ylabel("Dispatch Overhead (% of E2E Latency)")
-    ax2.set_title("Dispatch Latency Proportion of Total Execution Time", fontsize=11)
+    ax2.set_ylabel("E2E-GPU Residual (% of E2E Latency)")
+    ax2.set_title("E2E-GPU Residual Proportion of Total Execution Time", fontsize=11)
     ax2.set_xticks(x)
     ax2.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
 
-    fig.suptitle("Dispatch Latency Correlation with GPU Compute Latency Across All Scenarios", fontsize=13, fontweight="bold")
+    fig.suptitle("E2E-GPU Residual Correlation with GPU Compute Latency Across All Scenarios", fontsize=13, fontweight="bold")
     plt.tight_layout()
-    fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_dispatch_vs_compute.png"), dpi=150)
-    print(f"  → {PLOT_DIR}/mem_gpu_dispatch_vs_compute.png")
+    fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_residual_vs_compute.png"), dpi=150)
+    print(f"  → {PLOT_DIR}/mem_gpu_residual_vs_compute.png")
     plt.close(fig)
 
     # ── Plot 4: Latencies Across ALL Scenarios & Hierarchy (NO FILTERING!) ─
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6))
 
-    # Left: All Scenarios Compute & Dispatch Latency Side-by-Side
+    # Left: All Scenarios Compute & E2E-GPU Residual Side-by-Side
     ax1_twin = ax1.twinx()
     p1 = ax1.bar(x - bar_w / 2, comp_vals, bar_w, color=colors, edgecolor="black", label="Compute Latency (ms)")
-    p2 = ax1_twin.plot(x + bar_w / 2, disp_vals, "s--", color="black", markersize=6, linewidth=1.5, label="Dispatch Latency (ms)")
+    p2 = ax1_twin.plot(x + bar_w / 2, disp_vals, "s--", color="black", markersize=6, linewidth=1.5, label="E2E-GPU Residual (ms)")
 
     ax1.set_xlabel("Interference Scenario (All Parameters)")
     ax1.set_ylabel("Compute Latency (ms)", color="black")
-    ax1_twin.set_ylabel("Dispatch Latency (ms)", color="black")
-    ax1.set_title("All Scenarios: Compute & Dispatch Latencies\n(Includes CPU-side, Pagefaults, Cache, DRAM)", fontsize=11)
+    ax1_twin.set_ylabel("E2E-GPU Residual (ms)", color="black")
+    ax1.set_title("All Scenarios: Compute & E2E-GPU Residuals\n(Includes CPU-side, Pagefaults, Cache, DRAM)", fontsize=11)
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels, fontsize=7.5, rotation=25, ha="right")
 
     # Right: Memory Block Size Scaling + CPU-Side Reference Overlay
-    stress_mem = [d for d in data if d["params"]["block_bytes"] > 0]
+    stress_mem = [d for d in data if d["params"]["footprint_bytes"] > 0]
     if stress_mem:
-        b_kib = [d["params"]["block_bytes"] / 1024.0 for d in stress_mem]
+        b_kib = [d["params"]["footprint_bytes"] / 1024.0 for d in stress_mem]   # aggregate = block x threads
         b_comp = [d["gpu"]["compute_ms"] for d in stress_mem]
-        b_disp = [d["gpu"]["dispatch_latency_ms"] for d in stress_mem]
+        b_disp = [d["gpu"]["e2e_minus_gpu_ms"] for d in stress_mem]
 
         ax2_twin = ax2.twinx()
         ax2.plot(b_kib, b_comp, "ro-", linewidth=2.0, markersize=7, label="Memory: Compute (ms)")
-        ax2_twin.plot(b_kib, b_disp, "bs--", linewidth=1.8, markersize=7, label="Memory: Dispatch (ms)")
+        ax2_twin.plot(b_kib, b_disp, "bs--", linewidth=1.8, markersize=7, label="Memory: Residual (ms)")
 
         # OVERLAY ALL NON-MEMORY SCENARIOS as horizontal reference lines / markers
-        non_mem = [d for d in data if d["params"]["block_bytes"] == 0 and d["params"]["name"] != "baseline"]
+        non_mem = [d for d in data if d["params"]["footprint_bytes"] == 0 and d["params"]["name"] != "baseline"]
         overlay_colors = ["#795548", "#607D8B", "#FF5722", "#4CAF50"]
         for idx, nm in enumerate(non_mem):
             col = overlay_colors[idx % len(overlay_colors)]
@@ -292,15 +292,17 @@ def main():
             ax2.axhline(nm_comp, color=col, linestyle=":", alpha=0.8,
                         label=f"{nm_name} Compute: {nm_comp:.0f}ms")
 
-        ax2.axvline(256, color="purple", linestyle=":", alpha=0.7, label="L1 Cache (256 KiB)")
-        ax2.axvline(2048, color="brown", linestyle=":", alpha=0.7, label="L2/L3 Cache (2 MiB)")
+        # Documented BCM2712 / Cortex-A76 sizes (hypotheses until verified on the device)
+        ax2.axvline(64, color="purple", linestyle=":", alpha=0.7, label="L1D per core (64 KiB)")
+        ax2.axvline(512, color="teal", linestyle=":", alpha=0.7, label="L2 per core (512 KiB)")
+        ax2.axvline(2048, color="brown", linestyle=":", alpha=0.7, label="L3 shared (2 MiB)")
 
         ax2.set_xscale("log", base=2)
         ax2.xaxis.set_major_formatter(mticker.FuncFormatter(lambda val, pos: f"{int(val)}K" if val < 1024 else f"{int(val/1024)}M"))
-        ax2.set_xlabel("Memory Working Set Size (log scale)")
+        ax2.set_xlabel("Aggregate working set = block x threads (log scale)")
         ax2.set_ylabel("Compute Latency (ms)", color="red")
-        ax2_twin.set_ylabel("Dispatch Latency (ms)", color="blue")
-        ax2.set_title("Memory Block Progression with CPU-Side Contention Reference", fontsize=11)
+        ax2_twin.set_ylabel("E2E-GPU Residual (ms)", color="blue")
+        ax2.set_title("Aggregate Working-Set Progression with CPU-Side Contention Reference", fontsize=11)
         ax2.legend(loc="upper left", fontsize=7.5)
 
     fig.suptitle("Comprehensive Latency Scaling Across Memory, CPU, and OS Interference", fontsize=13, fontweight="bold")
@@ -324,7 +326,7 @@ def main():
     bar_bw = ax1.bar(x, bw_avg, bar_w * 1.4, color="#90CAF9", edgecolor="black",
                      linewidth=0.5, alpha=0.8, label="DRAM Bandwidth (MiB/s)")
     line_comp = ax2.plot(x, comp_vals, "ro-", markersize=7, linewidth=2, label="Compute Latency (ms)")
-    line_disp = ax2.plot(x, [v * 1000 for v in disp_vals], "gs--", markersize=6, linewidth=1.5, label="Dispatch Latency (×1000 ms)")
+    line_disp = ax2.plot(x, [v * 1000 for v in disp_vals], "gs--", markersize=6, linewidth=1.5, label="E2E-GPU Residual (×1000 ms)")
 
     ax1.set_xlabel("Interference Scenario (All Parameters)")
     ax1.set_ylabel("DRAM Bandwidth Generated (MiB/s)", color="#1565C0")
@@ -340,9 +342,9 @@ def main():
                      fontsize=7, color="#5D4037", fontweight="bold")
 
     lines_all = [bar_bw, line_comp[0], line_disp[0]]
-    labels_all = ["DRAM Bandwidth (MiB/s)", "Compute Latency (ms)", "Dispatch Latency × 1000 (ms)"]
+    labels_all = ["DRAM Bandwidth (MiB/s)", "Compute Latency (ms)", "E2E-GPU Residual × 1000 (ms)"]
     ax1.legend(lines_all, labels_all, loc="upper left", fontsize=8.5)
-    ax1.set_title("Interference Bandwidth vs Compute & Dispatch Latency Across ALL Parameters", fontsize=12)
+    ax1.set_title("Interference Bandwidth vs Compute & E2E-GPU Residual Across ALL Parameters", fontsize=12)
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "mem_gpu_bandwidth_vs_latency.png"), dpi=150)
     print(f"  → {PLOT_DIR}/mem_gpu_bandwidth_vs_latency.png")
@@ -368,7 +370,7 @@ def main():
 
     # ── Print Comprehensive Summary Table (EVERY Scenario) ───────────────
     print("\n" + "=" * 115)
-    print("ALL SCENARIOS & PARAMETERS: LATENCY (E2E, COMPUTE, DISPATCH) – SUMMARY")
+    print("ALL SCENARIOS & PARAMETERS: LATENCY (E2E, COMPUTE, RESIDUAL) – SUMMARY")
     print("=" * 115)
     print(f"{'Scenario':<14s} {'Category':<15s} {'Mode':<8s} {'Block':>6s} {'BW(MiB/s)':>10s} "
           f"{'E2E(ms)':>10s} {'Comp(ms)':>10s} {'Disp(ms)':>10s} {'CompDeg':>9s} {'DispDeg':>9s}")
@@ -378,7 +380,7 @@ def main():
         g = d["gpu"]
         e2e = g["e2e_ms"]
         comp = g["compute_ms"]
-        disp = g["dispatch_latency_ms"]
+        disp = g["e2e_minus_gpu_ms"]
         c_deg = comp / base_comp
         d_deg = disp / base_disp if base_disp > 0 else 1.0
 

@@ -12,6 +12,7 @@ Parses:
 
 import os
 import re
+import sys
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -43,6 +44,20 @@ def parse_block_bytes(block_str):
             return num * 1024 * 1024 * 1024
         return num
     return 0
+
+
+L3_BYTES_DEFAULT = 2 * 1024 * 1024   # BCM2712 shared L3 (documented value; verify on your system)
+
+
+def format_bytes(n):
+    """Format a byte count as KiB/MiB/GiB ('-' for 0)."""
+    if not n:
+        return "-"
+    for unit, size in (("GiB", 1 << 30), ("MiB", 1 << 20), ("KiB", 1 << 10)):
+        if n >= size:
+            val = n / size
+            return f"{val:g} {unit}"
+    return f"{n} B"
 
 
 def parse_scenario(folder, meta=None):
@@ -134,21 +149,45 @@ def parse_scenario(folder, meta=None):
     block_bytes = parse_block_bytes(block_str)
     block_disp = block_str.upper() if block_str != "-" else "-"
 
-    # Cache tier classification based on RPi5 Cortex-A76 cache sizes:
-    # L1 = 256 KiB, L2 = 2 MiB, L3 = 2 MiB shared
+    # Aggregate working set of the stressor.
+    #   sysbench --memory-scope=local  : every thread owns one block -> block * threads
+    #   sysbench --memory-scope=global : all threads share one block  -> block
+    # Only computed for the sysbench modes ("mem" and the page-fault loop "pf");
+    # for stress-ng modes the per-worker meaning of the byte size depends on the
+    # stress-ng version, so no footprint is claimed.
+    if mode in ("mem", "pf") and block_bytes > 0:
+        footprint_bytes = block_bytes if scope == "global" else block_bytes * threads
+    else:
+        footprint_bytes = 0
+
+    # Cache tier classification. These are HYPOTHESES from documented sizes of the
+    # Cortex-A76 cluster in the BCM2712 (L1D 64 KiB/core, L2 512 KiB/core, L3 2 MiB
+    # shared) and must be confirmed with measurements (see README). Rule used:
+    #   cache_resident : each thread's block <= 256 KiB (half of its private L2)
+    #                    AND the aggregate footprint <= L3 (2 MiB)
+    #   l2_l3_resident : aggregate footprint <= L3 (2 MiB) but larger blocks
+    #   cache_evict    : aggregate footprint > L3 (2 MiB)
+    L3_BYTES = L3_BYTES_DEFAULT
+    PRIVATE_BLOCK_LIMIT = 256 * 1024
     if category == "baseline":
         cache_tier = "baseline"
     elif category in ("cpu_side", "pagefault"):
         cache_tier = category
-    elif block_bytes > 0:
-        if block_bytes <= 256 * 1024:
+    elif footprint_bytes > 0:
+        if block_bytes <= PRIVATE_BLOCK_LIMIT and footprint_bytes <= L3_BYTES:
             cache_tier = "cache_resident"
-        elif block_bytes <= 2 * 1024 * 1024:
+        elif footprint_bytes <= L3_BYTES:
             cache_tier = "l2_l3_resident"
         else:
             cache_tier = "cache_evict"
     else:
         cache_tier = category
+
+    # Older meta.txt files were written when "1m" (4 threads -> 4 MiB, larger than the
+    # 2 MiB L3) was listed as cache_resident. Correct that here so existing data is
+    # classified by aggregate footprint, consistent with scripts/experiments.sh.
+    if category == "cache_resident" and footprint_bytes > L3_BYTES:
+        category = "cache_evict"
 
     return {
         "name": name,
@@ -158,6 +197,8 @@ def parse_scenario(folder, meta=None):
         "block_str": block_disp,
         "block_size_str": block_disp,
         "block_bytes": block_bytes,
+        "footprint_bytes": footprint_bytes,
+        "footprint_str": format_bytes(footprint_bytes),
         "oper": oper,
         "access": access,
         "threads": threads,
@@ -194,43 +235,67 @@ def load_meta(folder):
 # ---------------------------------------------------------------------------
 
 def load_gpu_task(folder):
-    """Parse gpu_task.txt and return a dict with key latency numbers."""
+    """
+    Parse gpu_task.txt and return a dict with key latency numbers.
+
+    Keys (all times in ms unless noted):
+      e2e_ms            CPU wall time around the whole batch (400 dispatches + barriers
+                        + glFinish), measured with CLOCK_MONOTONIC_RAW.
+      gpu_elapsed_ms    GL_TIME_ELAPSED_EXT result for the batch = elapsed time on the
+                        GPU timeline between the query boundaries. It includes the
+                        dispatches AND the barriers inside the query, so it is not pure
+                        shader execution time.
+      compute_ms        alias of gpu_elapsed_ms (kept for the existing plots).
+      e2e_minus_gpu_ms  SIGNED difference e2e_ms - gpu_elapsed_ms. This is NOT a dispatch
+                        latency: CPU submission and GPU execution overlap, so the
+                        difference mixes submission, synchronisation and timer effects.
+                        Negative values are kept and flagged, never clamped.
+      e2e_minus_gpu_us  the same, per dispatch (us).
+      e2e_minus_gpu_pct the same, as % of e2e_ms (signed).
+      negative_residual True if e2e_minus_gpu_ms < 0 (measurement disagreement; inspect).
+      gpu_timer_disjoint True if the run reported an invalid (disjoint) GPU timer.
+    """
+    num = r"(-?\d+(?:\.\d+)?)"
     path = DATA_DIR / folder / "gpu_task.txt"
     result = {}
     with open(path) as f:
         for line in f:
             line = line.strip()
             # End-to-end latency:          4605.335 ms
-            m = re.match(r"End-to-end latency:\s+([\d.]+)\s+ms", line)
+            m = re.match(rf"End-to-end latency:\s+{num}\s+ms", line)
             if m:
                 result["e2e_ms"] = float(m.group(1))
-            m = re.match(r"Average per dispatch:\s+([\d.]+)\s+us", line)
+            m = re.match(rf"Average per dispatch:\s+{num}\s+us", line)
             if m:
                 result["avg_dispatch_us"] = float(m.group(1))
-            m = re.match(r"GPU elapsed time:\s+([\d.]+)\s+ms", line)
+            m = re.match(rf"GPU elapsed time:\s+{num}\s+ms", line)
             if m:
                 result["gpu_elapsed_ms"] = float(m.group(1))
-            m = re.match(r"Average GPU time/dispatch:\s+([\d.]+)\s+us", line)
+            elif re.match(r"GPU elapsed time:\s+INVALID", line):
+                result["gpu_timer_disjoint"] = True
+            m = re.match(rf"Average GPU time/dispatch:\s+{num}\s+us", line)
             if m:
                 result["avg_gpu_us"] = float(m.group(1))
-            m = re.match(r"E2E minus GPU elapsed:\s+([\d.]+)\s+ms", line)
+            # signed: the regex accepts a leading '-'
+            m = re.match(rf"E2E minus GPU elapsed:\s+{num}\s+ms", line)
             if m:
-                result["overhead_ms"] = float(m.group(1))
+                result["printed_e2e_minus_gpu_ms"] = float(m.group(1))
             m = re.match(r"Dispatch count:\s+(\d+)", line)
             if m:
                 result["dispatch_count"] = int(m.group(1))
 
-    # Standardize compute latency and dispatch latency (E2E - compute)
     if "e2e_ms" in result and "gpu_elapsed_ms" in result:
         result["compute_ms"] = result["gpu_elapsed_ms"]
-        # Dispatch latency is E2E minus compute (GPU elapsed)
-        disp_ms = result.get("overhead_ms", result["e2e_ms"] - result["gpu_elapsed_ms"])
-        result["dispatch_latency_ms"] = max(disp_ms, 0.0)
-        result["overhead_ms"] = result["dispatch_latency_ms"]
-        
+
+        # Signed residual: prefer the value gpu_task printed, else compute it. No clamping.
+        resid = result.get("printed_e2e_minus_gpu_ms",
+                           result["e2e_ms"] - result["gpu_elapsed_ms"])
+        result["e2e_minus_gpu_ms"] = resid
+        result["negative_residual"] = resid < 0
+
         count = result.get("dispatch_count", 400)
-        result["dispatch_latency_us"] = (result["dispatch_latency_ms"] * 1000.0) / count if count > 0 else 0.0
-        result["dispatch_ratio_pct"] = (result["dispatch_latency_ms"] / result["e2e_ms"] * 100.0) if result["e2e_ms"] > 0 else 0.0
+        result["e2e_minus_gpu_us"] = (resid * 1000.0) / count if count > 0 else 0.0
+        result["e2e_minus_gpu_pct"] = (resid / result["e2e_ms"] * 100.0) if result["e2e_ms"] > 0 else 0.0
     return result
 
 
@@ -395,6 +460,10 @@ def load_all():
         sb_info, sb_tp = load_sysbench(folder)
         dvfs = load_dvfs(folder)
         v3d = load_v3d_counters(folder)
+        if gpu.get("negative_residual"):
+            print(f"WARNING: {folder}: E2E - GPU timer is negative "
+                  f"({gpu['e2e_minus_gpu_ms']:.3f} ms); kept as-is, please inspect.",
+                  file=sys.stderr)
         results.append({
             "folder": folder,
             "params": params,
@@ -411,14 +480,16 @@ def load_all():
 if __name__ == "__main__":
     # Quick test
     all_s = load_all()
-    print(f"{'Folder':<14s} {'Category':<15s} {'Mode':<8s} {'Block':>6s} {'Thr':>4s} {'Scope':<7s} {'E2E (ms)':>10s} {'Comp (ms)':>10s} {'Disp (ms)':>10s} {'Disp%':>7s}")
-    print("-" * 105)
+    print(f"{'Folder':<14s} {'Category':<15s} {'Mode':<8s} {'Block':>6s} {'Thr':>4s} {'Scope':<7s} "
+          f"{'Footprint':>10s} {'E2E (ms)':>10s} {'GPUtimer(ms)':>12s} {'E2E-GPU(ms)':>12s} {'%E2E':>8s}")
+    print("-" * 125)
     for s in all_s:
         p = s["params"]
         g = s["gpu"]
         e2e = g.get('e2e_ms', 0)
         comp = g.get('compute_ms', 0)
-        disp = g.get('dispatch_latency_ms', 0)
-        disp_pct = g.get('dispatch_ratio_pct', 0)
-        print(f"{s['folder']:<14s} {p['category']:<15s} {p['mode']:<8s} {p['block_str']:>6s} {str(p['threads']):>4s} {p['scope']:<7s} {e2e:>10.1f} {comp:>10.1f} {disp:>10.3f} {disp_pct:>6.3f}%")
-
+        resid = g.get('e2e_minus_gpu_ms', 0)
+        resid_pct = g.get('e2e_minus_gpu_pct', 0)
+        flag = "  <-- NEGATIVE" if g.get('negative_residual') else ""
+        print(f"{s['folder']:<14s} {p['category']:<15s} {p['mode']:<8s} {p['block_str']:>6s} {str(p['threads']):>4s} "
+              f"{p['scope']:<7s} {p['footprint_str']:>10s} {e2e:>10.1f} {comp:>12.1f} {resid:>12.3f} {resid_pct:>7.4f}%{flag}")

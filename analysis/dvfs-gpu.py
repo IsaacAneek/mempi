@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-dvfs-gpu.py  ─  DVFS Parameters vs GPU Execution & Dispatch Latency (All Scenarios)
+dvfs-gpu.py  ─  DVFS Parameters vs GPU Execution & E2E-GPU Residual (All Scenarios)
 ===================================================================================
 Correlates Dynamic Voltage and Frequency Scaling (DVFS) state with
-GPU task latency (Compute vs Dispatch Overhead) across EVERY parameter scenario:
+GPU task latency (Compute vs E2E-GPU Residual) across EVERY parameter scenario:
   - Baseline
   - CPU-side contentions (mutex, prime, threads)
   - Page-fault stressors (stress-ng fault/mmap)
@@ -15,7 +15,7 @@ Analyzes:
   - CPU frequency, ARM PLL, V3D clock during GPU activity
   - Temperature progression under stress
   - Throttling state correlation
-  - Impact on GPU Compute Latency vs CPU Dispatch Latency (E2E - Compute)
+  - Impact on GPU Compute Latency vs E2E-GPU Residual (E2E - GPU timer)
 
 Plots generated (saved to analysis/plots/):
   1. dvfs_gpu_timeline.png:
@@ -23,9 +23,9 @@ Plots generated (saved to analysis/plots/):
   2. dvfs_gpu_v3d_clock_dist.png:
      V3D clock distribution across EVERY scenario.
   3. dvfs_gpu_temp_vs_latency.png:
-     Temperature vs Compute Latency and Dispatch Latency across EVERY scenario.
+     Temperature vs Compute Latency and E2E-GPU Residual across EVERY scenario.
   4. dvfs_gpu_summary_bars.png:
-     5-panel summary: CPU Freq, V3D Clock, Max Temp, Compute Latency, Dispatch Latency.
+     5-panel summary: CPU Freq, V3D Clock, Max Temp, Compute Latency, E2E-GPU Residual.
   5. dvfs_gpu_temperature_ramp.png:
      Thermal ramp progression over experiment timeline.
 """
@@ -116,7 +116,7 @@ def nice_label(name, params=None):
 def sort_key(d):
     p = d["params"]
     cat_rank = CAT_SORT_ORDER.get(p.get("category"), 99)
-    block_b = p.get("block_bytes", 0)
+    block_b = p.get("footprint_bytes", 0) or p.get("block_bytes", 0)
     name = p.get("name", "")
     return (cat_rank, block_b, name)
 
@@ -140,7 +140,7 @@ def main():
     baseline = next((d for d in data if d["params"]["category"] == "baseline" or d["params"]["name"] == "baseline"), None)
     base_e2e = baseline["gpu"]["e2e_ms"] if baseline else 4120.0
     base_comp = baseline["gpu"]["compute_ms"] if baseline else 4120.0
-    base_disp = baseline["gpu"]["dispatch_latency_ms"] if baseline else 0.170
+    base_disp = baseline["gpu"]["e2e_minus_gpu_ms"] if baseline else 0.170
     if base_disp <= 0:
         base_disp = 0.170
 
@@ -188,8 +188,8 @@ def main():
             ax.axvspan(t_start, t_end, alpha=0.1, color="green", label="GPU active")
 
         comp_lat = d["gpu"]["compute_ms"]
-        disp_lat = d["gpu"]["dispatch_latency_ms"]
-        ax.set_title(f"{name} ({d['params']['category']})  –  Compute: {comp_lat:.0f} ms | Dispatch: {disp_lat:.3f} ms",
+        disp_lat = d["gpu"]["e2e_minus_gpu_ms"]
+        ax.set_title(f"{name} ({d['params']['category']})  –  Compute: {comp_lat:.0f} ms | Residual: {disp_lat:.3f} ms",
                      fontsize=10.5, fontweight="bold")
         ax.set_ylabel("Frequency (MHz)")
         ax.legend(loc="upper left", fontsize=8)
@@ -236,13 +236,13 @@ def main():
     print(f"  → {PLOT_DIR}/dvfs_gpu_v3d_clock_dist.png")
     plt.close(fig)
 
-    # ── Plot 3: Temperature vs Compute Latency and Dispatch Latency ──────
+    # ── Plot 3: Temperature vs Compute Latency and E2E-GPU Residual ──────
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
     avg_temps = []
     max_temps = []
     comp_lats = [d["gpu"]["compute_ms"] for d in data]
-    disp_lats = [d["gpu"]["dispatch_latency_ms"] for d in data]
+    disp_lats = [d["gpu"]["e2e_minus_gpu_ms"] for d in data]
 
     for d in data:
         dvfs = d["dvfs"]
@@ -270,7 +270,7 @@ def main():
     ax1.set_ylabel("Compute Latency (ms)")
     ax1.set_title("Temperature vs GPU Compute Latency (All Scenarios)", fontsize=11)
 
-    # Right: Temp vs Dispatch Latency (E2E - Compute)
+    # Right: Temp vs E2E-GPU Residual (E2E - GPU timer)
     for d, c, t_avg, t_max, disp in zip(data, colors_list, avg_temps, max_temps, disp_lats):
         name = d["params"]["name"]
         ax2.scatter(t_avg, disp, s=160, color=c, edgecolors="black", zorder=4)
@@ -278,10 +278,10 @@ def main():
         ax2.annotate(f" {name}\n ({disp:.3f}ms)", (t_avg, disp), fontsize=7.5, fontweight="bold")
 
     ax2.set_xlabel("Average Temperature During Run (°C)")
-    ax2.set_ylabel("Dispatch Latency (ms) = E2E - Compute")
-    ax2.set_title("Temperature vs CPU Dispatch Latency (All Scenarios)", fontsize=11)
+    ax2.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer")
+    ax2.set_title("Temperature vs E2E-GPU Residual (All Scenarios)", fontsize=11)
 
-    fig.suptitle("SoC Thermal State vs Compute and Dispatch Latencies Across All Parameters", fontsize=13, fontweight="bold")
+    fig.suptitle("SoC Thermal State vs Compute and E2E-GPU Residuals Across All Parameters", fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "dvfs_gpu_temp_vs_latency.png"), dpi=150)
     print(f"  → {PLOT_DIR}/dvfs_gpu_temp_vs_latency.png")
@@ -341,16 +341,16 @@ def main():
     for i, v in enumerate(comp_lats):
         axes[3].text(i, v + 200, f"{v:.0f}", ha="center", fontsize=7)
 
-    # 4e: Dispatch Latency = E2E - Compute
+    # 4e: E2E-GPU Residual = E2E - GPU timer
     axes[4].bar(x, disp_lats, color=colors_list, edgecolor="black", linewidth=0.5)
-    axes[4].set_title("Dispatch Latency\n(E2E - Compute)", fontsize=10)
+    axes[4].set_title("E2E-GPU Residual\n(E2E - GPU timer)", fontsize=10)
     axes[4].set_ylabel("ms")
     axes[4].set_xticks(x)
     axes[4].set_xticklabels(short_labels, fontsize=7, rotation=25, ha="right")
     for i, v in enumerate(disp_lats):
         axes[4].text(i, v + 0.05, f"{v:.2f}", ha="center", fontsize=7.5, fontweight="bold")
 
-    fig.suptitle("DVFS State vs GPU Compute Latency vs CPU Dispatch Latency Across ALL Parameters",
+    fig.suptitle("DVFS State vs GPU Compute Latency vs E2E-GPU Residual Across ALL Parameters",
                  fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "dvfs_gpu_summary_bars.png"), dpi=150)
@@ -380,7 +380,7 @@ def main():
 
     # ── Print Summary ────────────────────────────────────────────────────
     print("\n" + "=" * 115)
-    print("DVFS vs GPU LATENCY (COMPUTE & DISPATCH) ACROSS ALL PARAMETERS – SUMMARY")
+    print("DVFS vs GPU LATENCY (COMPUTE & E2E-GPU RESIDUAL) ACROSS ALL PARAMETERS – SUMMARY")
     print("=" * 115)
     print(f"{'Scenario':<14s} {'Category':<15s} {'CPU(MHz)':>10s} {'V3D(MHz)':>10s} {'MaxTemp':>8s} "
           f"{'E2E(ms)':>10s} {'Comp(ms)':>10s} {'Disp(ms)':>10s} {'CompDeg':>9s} {'DispDeg':>9s}")
@@ -390,7 +390,7 @@ def main():
         g = d["gpu"]
         e2e = g["e2e_ms"]
         comp = g["compute_ms"]
-        disp = g["dispatch_latency_ms"]
+        disp = g["e2e_minus_gpu_ms"]
         c_deg = comp / base_comp
         d_deg = disp / base_disp if base_disp > 0 else 1.0
 

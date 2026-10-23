@@ -127,8 +127,8 @@ Folder name format: `<block><op>[_rnd][_t<threads>][_g]`
 | Category | Folders (examples) | What it stresses |
 |---|---|---|
 | `baseline` | `baseline` | `gpu_task` alone, monitors still running |
-| `cache_resident` | `16kr`, `256kw_rnd`, `1mr` | working set fits in L1/L2/L3, almost no DRAM traffic |
-| `cache_evict` | `2mr`, `4mw_rnd` | spills the shared 2 MB L3, evicts lines |
+| `cache_resident` | `16kr`, `256kw_rnd` | aggregate working set (block x threads) <= 1 MB; expected to fit L1/L2/L3 |
+| `cache_evict` | `1mr`, `2mr`, `4mw_rnd` | aggregate block x threads above the 2 MiB L3 (1m = 4 MiB, 4m = 16 MiB) |
 | `dram_stream` | `8mr`, `64mw`, `256mr` | sustained sequential DRAM bandwidth |
 | `dram_random` | `8mr_rnd`, `64mw_rnd` | random DRAM access (prefetcher-hostile) |
 | `coherence` | `32kw_t2_g`, `256kw_g` | shared buffer, cache lines bounce between cores |
@@ -252,3 +252,15 @@ bash scripts/run_gpu_task.sh                                     # just gpu_task
   memory traffic. It is the "CPU-side contention" control.
 - Throttling matters on a Pi 5: compare `throttled_flags` and clocks in the DVFS logs
   against GPU performance before blaming memory contention.
+- **Working set = block x threads.** With `--memory-scope=local` (the default here) each
+  thread has its own buffer, so `64mw_rnd` with 4 threads touches 4 x 64 MiB = 256 MiB.
+  The analysis reports this as `footprint_bytes` / `footprint_str`. Category names are
+  hypotheses derived from documented cache sizes (L1D 64 KiB/core, L2 512 KiB/core,
+  L3 2 MiB shared) until confirmed with measurements.
+- **`E2E - GPU timer` is not a dispatch latency.** `gpu_task` reports the CPU wall time of
+  the whole batch (`e2e_ms`) and a `GL_TIME_ELAPSED_EXT` value (`gpu_elapsed_ms`, also
+  exposed as `compute_ms`). Their difference (`e2e_minus_gpu_ms`) mixes submission,
+  synchronisation and timer effects. It is stored **signed**; negative values are kept,
+  flagged (`negative_residual`) and reported on stderr instead of being clamped to zero.
+  Report it as an absolute difference with its spread over repeated runs; the ratio to the
+  baseline is unstable because the baseline residual is tiny.

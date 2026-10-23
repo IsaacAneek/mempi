@@ -6,22 +6,22 @@ Includes and visualizes EVERY scenario and parameter without omission or assumpt
   - Baseline
   - CPU-side contentions (mutex1_t4, cpu_prime, threads)
   - Page-fault stressors (ng_fault_t4, pf_*)
-  - Cache-resident memory stressors (16kr, 128kr, 256kr, 1mr)
-  - Cache-evicting memory stressors (2mr, 4mr)
+  - Cache-resident memory stressors (16kr, 128kr, 256kr: aggregate <= 2 MiB)
+  - Cache-evicting memory stressors (1mr, 2mr, 4mr: block x threads above the 2 MiB L3)
   - DRAM streaming & random access (8mr, 64mw_rnd)
   - Cache coherence & thread sweeps
 
 Visualizations generated (saved to analysis/plots/):
   1. category_cross_comparison.png:
-     Category-level summary of Compute and Dispatch Latency degradation across all categories.
+     Category-level summary of Compute and E2E-GPU Residual degradation across all categories.
   2. category_all_scenarios_compute.png:
      Compute Latency & Compute Degradation (× baseline) for EVERY single scenario.
-  3. category_all_scenarios_dispatch.png:
-     Dispatch Latency & Dispatch Degradation (× baseline) for EVERY single scenario.
+  3. category_all_scenarios_residual.png:
+     E2E-GPU Residual & Residual Ratio (× baseline) for EVERY single scenario.
   4. category_cpu_vs_memory_all.png:
      Direct side-by-side comparison of ALL CPU-side, Pagefault, Cache, and DRAM scenarios.
-  5. category_scatter_compute_vs_dispatch.png:
-     Scatter map of Compute Degradation vs Dispatch Degradation for EVERY scenario.
+  5. category_scatter_compute_vs_residual.png:
+     Scatter map of Compute Degradation vs Residual Ratio for EVERY scenario.
 """
 
 import os
@@ -110,7 +110,7 @@ def nice_label(name, params=None):
 def sort_key(d):
     p = d["params"]
     cat_rank = CAT_SORT_ORDER.get(p.get("category"), 99)
-    block_b = p.get("block_bytes", 0)
+    block_b = p.get("footprint_bytes", 0) or p.get("block_bytes", 0)
     name = p.get("name", "")
     return (cat_rank, block_b, name)
 
@@ -126,7 +126,7 @@ def main():
 
     baseline = next((d for d in data if d["params"]["category"] == "baseline" or d["params"]["name"] == "baseline"), None)
     base_comp = baseline["gpu"]["compute_ms"] if baseline else 4120.0
-    base_disp = baseline["gpu"]["dispatch_latency_ms"] if baseline else 0.170
+    base_disp = baseline["gpu"]["e2e_minus_gpu_ms"] if baseline else 0.170
     if base_disp <= 0:
         base_disp = 0.170
 
@@ -136,7 +136,7 @@ def main():
     x = np.arange(len(data))
 
     comp_vals = [d["gpu"]["compute_ms"] for d in data]
-    disp_vals = [d["gpu"]["dispatch_latency_ms"] for d in data]
+    disp_vals = [d["gpu"]["e2e_minus_gpu_ms"] for d in data]
     comp_deg_vals = [c / base_comp for c in comp_vals]
     disp_deg_vals = [disp / base_disp for disp in disp_vals]
 
@@ -164,7 +164,7 @@ def main():
         if c in by_cat:
             cat_names.append(c.replace("_", "\n"))
             c_comp = np.mean([d["gpu"]["compute_ms"] for d in by_cat[c]])
-            c_disp = np.mean([d["gpu"]["dispatch_latency_ms"] for d in by_cat[c]])
+            c_disp = np.mean([d["gpu"]["e2e_minus_gpu_ms"] for d in by_cat[c]])
             cat_comp_deg.append(c_comp / base_comp)
             cat_disp_deg.append(c_disp / base_disp)
             cat_colors.append(CAT_PALETTE.get(c, "#9E9E9E"))
@@ -173,7 +173,7 @@ def main():
         if c not in order:
             cat_names.append(c.replace("_", "\n"))
             c_comp = np.mean([d["gpu"]["compute_ms"] for d in by_cat[c]])
-            c_disp = np.mean([d["gpu"]["dispatch_latency_ms"] for d in by_cat[c]])
+            c_disp = np.mean([d["gpu"]["e2e_minus_gpu_ms"] for d in by_cat[c]])
             cat_comp_deg.append(c_comp / base_comp)
             cat_disp_deg.append(c_disp / base_disp)
             cat_colors.append(CAT_PALETTE.get(c, "#9E9E9E"))
@@ -200,8 +200,8 @@ def main():
         ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
                  f"{val:.1f}×", ha="center", va="bottom", fontsize=8, fontweight="bold")
 
-    ax2.set_ylabel("Dispatch Degradation Factor (× baseline)")
-    ax2.set_title("Average Dispatch Overhead Degradation by Category", fontsize=11)
+    ax2.set_ylabel("Residual Ratio Factor (× baseline)")
+    ax2.set_title("Average E2E-GPU Residual Degradation by Category", fontsize=11)
     ax2.set_xticks(x_cat)
     ax2.set_xticklabels(cat_names, fontsize=8)
     ax2.legend(loc="upper left")
@@ -245,7 +245,7 @@ def main():
     print(f"  → {PLOT_DIR}/category_all_scenarios_compute.png")
     plt.close(fig)
 
-    # ── Plot 3: Dispatch Latency Across EVERY Single Scenario ─────────────
+    # ── Plot 3: E2E-GPU Residual Across EVERY Single Scenario ─────────────
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6.5))
 
     b_d_abs = ax1.bar(x, disp_vals, color=colors_list, edgecolor="black", linewidth=0.6)
@@ -254,8 +254,8 @@ def main():
                  f"{val:.3f}", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
 
     ax1.axhline(base_disp, color="green", linestyle="--", linewidth=1.2, label=f"Baseline: {base_disp:.3f} ms")
-    ax1.set_ylabel("Dispatch Latency (ms) = E2E - Compute")
-    ax1.set_title("Absolute Dispatch Latency Across EVERY Scenario", fontsize=11)
+    ax1.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer")
+    ax1.set_title("Absolute E2E-GPU Residual Across EVERY Scenario", fontsize=11)
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels_list, fontsize=7.5, rotation=25, ha="right")
     ax1.legend(loc="upper left")
@@ -266,19 +266,19 @@ def main():
                  f"{val:.1f}×", ha="center", va="bottom", fontsize=7.5, fontweight="bold", color="#D84315")
 
     ax2.axhline(1.0, color="green", linestyle="--", linewidth=1.2, label="1.0× Baseline")
-    ax2.set_ylabel("Dispatch Degradation (× baseline)")
-    ax2.set_title("Dispatch Latency Degradation Factor (× baseline) Across EVERY Scenario", fontsize=11)
+    ax2.set_ylabel("Residual Ratio (× baseline)")
+    ax2.set_title("E2E-GPU Residual Degradation Factor (× baseline) Across EVERY Scenario", fontsize=11)
     ax2.set_xticks(x)
     ax2.set_xticklabels(labels_list, fontsize=7.5, rotation=25, ha="right")
     ax2.legend(loc="upper left")
 
-    fig.suptitle("CPU Dispatch Overhead (E2E - Compute) for Every Tested Parameter", fontsize=13, fontweight="bold")
+    fig.suptitle("E2E-GPU Residual (E2E - GPU timer) for Every Tested Parameter", fontsize=13, fontweight="bold")
     plt.tight_layout()
-    fig.savefig(os.path.join(PLOT_DIR, "category_all_scenarios_dispatch.png"), dpi=150)
-    print(f"  → {PLOT_DIR}/category_all_scenarios_dispatch.png")
+    fig.savefig(os.path.join(PLOT_DIR, "category_all_scenarios_residual.png"), dpi=150)
+    print(f"  → {PLOT_DIR}/category_all_scenarios_residual.png")
     plt.close(fig)
 
-    # ── Plot 4: Side-by-Side Comparison of ALL Scenarios (Compute vs Dispatch) ──
+    # ── Plot 4: Side-by-Side Comparison of ALL Scenarios (Compute vs Residual) ──
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6.5))
 
     bar_w = 0.4
@@ -298,8 +298,8 @@ def main():
         ax2.text(idx, val + 0.05, f"{val:.2f}ms\n({deg:.1f}×)", ha="center", va="bottom", fontsize=7, fontweight="bold")
 
     ax2.axhline(base_disp, color="green", linestyle="--", linewidth=1.2, label="Baseline")
-    ax2.set_ylabel("Dispatch Latency (ms)")
-    ax2.set_title("Dispatch Latency Comparison Across ALL Scenarios", fontsize=11)
+    ax2.set_ylabel("E2E-GPU Residual (ms)")
+    ax2.set_title("E2E-GPU Residual Comparison Across ALL Scenarios", fontsize=11)
     ax2.set_xticks(x)
     ax2.set_xticklabels(labels_list, fontsize=7.5, rotation=25, ha="right")
     ax2.legend(loc="upper left")
@@ -310,7 +310,7 @@ def main():
     print(f"  → {PLOT_DIR}/category_cpu_vs_memory_all.png")
     plt.close(fig)
 
-    # ── Plot 5: Scatter of Compute Degradation vs Dispatch Degradation ────
+    # ── Plot 5: Scatter of Compute Degradation vs Residual Ratio ────
     fig, ax = plt.subplots(figsize=(11, 7))
 
     for d, c, c_deg, d_deg in zip(data, colors_list, comp_deg_vals, disp_deg_vals):
@@ -320,17 +320,17 @@ def main():
         ax.annotate(f" {name} ({cat})", (c_deg, d_deg), fontsize=8, fontweight="bold")
 
     ax.axvline(1.0, color="green", linestyle="--", alpha=0.6, label="1.0× Baseline Compute")
-    ax.axhline(1.0, color="orange", linestyle="--", alpha=0.6, label="1.0× Baseline Dispatch")
+    ax.axhline(1.0, color="orange", linestyle="--", alpha=0.6, label="1.0× Baseline Residual")
 
     ax.set_xlabel("Compute Degradation Factor (× baseline)")
-    ax.set_ylabel("Dispatch Degradation Factor (× baseline)")
-    ax.set_title("Correlation Map: Compute Degradation vs Dispatch Degradation Across ALL Scenarios\n"
-                 "Shows how each interference parameter independently impacts GPU execution vs CPU dispatch",
+    ax.set_ylabel("Residual Ratio Factor (× baseline)")
+    ax.set_title("Correlation Map: Compute Degradation vs Residual Ratio Across ALL Scenarios\n"
+                 "Shows how each interference parameter independently impacts GPU execution vs E2E-GPU residual",
                  fontsize=12)
     ax.legend(loc="upper left")
     plt.tight_layout()
-    fig.savefig(os.path.join(PLOT_DIR, "category_scatter_compute_vs_dispatch.png"), dpi=150)
-    print(f"  → {PLOT_DIR}/category_scatter_compute_vs_dispatch.png")
+    fig.savefig(os.path.join(PLOT_DIR, "category_scatter_compute_vs_residual.png"), dpi=150)
+    print(f"  → {PLOT_DIR}/category_scatter_compute_vs_residual.png")
     plt.close(fig)
 
     print("\n Unbiased Category Analysis completed successfully for ALL parameters!")

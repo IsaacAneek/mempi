@@ -16,7 +16,7 @@ Key counters analyzed:
   - AXI bus read/write wait cycles
   - QPU stall breakdown (TMU, uniforms, wait-bubble)
   - Memory read/write transaction counts
-  - Correlation with Compute Latency and Dispatch Latency (E2E - Compute)
+  - Correlation with Compute Latency and E2E-GPU Residual (E2E - GPU timer)
 
 Plots generated (saved to analysis/plots/):
   1. v3d_mem_l2t_cache.png:
@@ -31,8 +31,8 @@ Plots generated (saved to analysis/plots/):
      Memory traffic (core vs AXI transactions) across EVERY scenario.
   6. v3d_mem_counter_heatmap.png:
      Normalized heatmap of all key counters across EVERY scenario.
-  7. v3d_mem_hardware_vs_dispatch.png:
-     Hardware AXI wait cycles & L2T stalls vs Compute and Dispatch Latencies across EVERY scenario.
+  7. v3d_mem_hardware_vs_residual.png:
+     Hardware AXI wait cycles & L2T stalls vs Compute and E2E-GPU Residuals across EVERY scenario.
 """
 
 import os
@@ -121,7 +121,7 @@ def nice_label(name, params=None):
 def sort_key(d):
     p = d["params"]
     cat_rank = CAT_SORT_ORDER.get(p.get("category"), 99)
-    block_b = p.get("block_bytes", 0)
+    block_b = p.get("footprint_bytes", 0) or p.get("block_bytes", 0)
     name = p.get("name", "")
     return (cat_rank, block_b, name)
 
@@ -155,7 +155,7 @@ def main():
     baseline = next((d for d in data if d["params"]["category"] == "baseline" or d["params"]["name"] == "baseline"), None)
     base_e2e = baseline["gpu"]["e2e_ms"] if baseline else 4120.0
     base_comp = baseline["gpu"]["compute_ms"] if baseline else 4120.0
-    base_disp = baseline["gpu"]["dispatch_latency_ms"] if baseline else 0.170
+    base_disp = baseline["gpu"]["e2e_minus_gpu_ms"] if baseline else 0.170
     if base_disp <= 0:
         base_disp = 0.170
 
@@ -396,12 +396,12 @@ def main():
     print(f"  → {PLOT_DIR}/v3d_mem_counter_heatmap.png")
     plt.close(fig)
 
-    # ── Plot 7: Hardware Contention vs Compute & Dispatch Latency (EVERY Scenario) ─
+    # ── Plot 7: Hardware Contention vs Compute & E2E-GPU Residual (EVERY Scenario) ─
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
     axi_waits_b = [get_counter(n, "AXI-read-wait-cycles") / 1e9 for n in names]
     comp_lats = [d["gpu"]["compute_ms"] for d in data]
-    disp_lats = [d["gpu"]["dispatch_latency_ms"] for d in data]
+    disp_lats = [d["gpu"]["e2e_minus_gpu_ms"] for d in data]
 
     # Left: AXI Read Wait Cycles vs Compute Latency
     for n, c, w, comp in zip(names, colors_list, axi_waits_b, comp_lats):
@@ -412,20 +412,20 @@ def main():
     ax1.set_ylabel("Compute Latency (ms)")
     ax1.set_title("AXI Read Wait Cycles vs GPU Compute Latency", fontsize=11)
 
-    # Right: AXI Read Wait Cycles vs Dispatch Latency (E2E - Compute)
+    # Right: AXI Read Wait Cycles vs E2E-GPU Residual (E2E - GPU timer)
     for n, c, w, disp in zip(names, colors_list, axi_waits_b, disp_lats):
         ax2.scatter(w, disp, s=160, color=c, edgecolors="black", zorder=4)
         ax2.annotate(f" {n}\n ({disp:.2f}ms)", (w, disp), fontsize=7.5, fontweight="bold")
 
     ax2.set_xlabel("AXI Read Wait Cycles (billions)")
-    ax2.set_ylabel("Dispatch Latency (ms) = E2E - Compute")
-    ax2.set_title("AXI Read Wait Cycles vs CPU Dispatch Latency", fontsize=11)
+    ax2.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer")
+    ax2.set_title("AXI Read Wait Cycles vs E2E-GPU Residual", fontsize=11)
 
-    fig.suptitle("Interconnect Contention: Impact on GPU Kernel vs CPU Dispatch Overhead (All Parameters)",
+    fig.suptitle("Interconnect Contention: Impact on GPU Kernel vs E2E-GPU Residual (All Parameters)",
                  fontsize=13, fontweight="bold")
     plt.tight_layout()
-    fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_hardware_vs_dispatch.png"), dpi=150)
-    print(f"  → {PLOT_DIR}/v3d_mem_hardware_vs_dispatch.png")
+    fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_hardware_vs_residual.png"), dpi=150)
+    print(f"  → {PLOT_DIR}/v3d_mem_hardware_vs_residual.png")
     plt.close(fig)
 
     # ── Print Summary Table (EVERY Scenario) ──────────────────────────────
@@ -452,10 +452,10 @@ def main():
     print("-" * (22 + 11 * len(names)))
 
     r_comp = f"{'Compute Lat (ms)':<22s}"
-    r_disp = f"{'Dispatch Lat (ms)':<22s}"
+    r_disp = f"{'E2E-GPU Resid (ms)':<22s}"
     for d in data:
         r_comp += f"  {d['gpu']['compute_ms']:>9.0f}"
-        r_disp += f"  {d['gpu']['dispatch_latency_ms']:>9.3f}"
+        r_disp += f"  {d['gpu']['e2e_minus_gpu_ms']:>9.3f}"
     print(r_comp)
     print(r_disp)
     print("-" * (22 + 11 * len(names)))

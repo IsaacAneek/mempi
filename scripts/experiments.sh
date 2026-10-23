@@ -14,12 +14,16 @@
 #     32kn   32 KB block, memory-oper=none (pure CPU loop)
 #     _rnd   random access        _t8  8 threads        _g  --memory-scope=global
 #
-# Raspberry Pi 5 (Cortex-A76): L1D 64 KB/core, L2 512 KB/core, L3 2 MB shared.
-# With --memory-scope=local each thread owns one block (working set = block*threads):
-#   16k..256k  fits L1/L2          -> cache-resident, ~no DRAM traffic
-#   1m         fits L3 alone, 4 threads = 4 MB
-#   2m,4m      4 threads = 8-16 MB -> spills L3, evicts shared lines
-#   8m..256m   far beyond L3       -> sustained DRAM traffic
+# Raspberry Pi 5 (Cortex-A76): L1D 64 KB/core, L2 512 KB/core, L3 2 MB shared
+# (documented sizes; treat the category names below as hypotheses until confirmed
+# with measurements: size sweeps, cache-miss counters, AXI/bus counters).
+# With --memory-scope=local each thread owns one block, so the AGGREGATE working set
+# is block * threads (4 threads by default):
+#   16k..256k  4 x 64 KB .. 4 x 256 KB = 64 KB .. 1 MB   fits private L1/L2 + L3
+#   1m         4 x 1 MB   = 4 MB   > 2 MB L3  -> cache pressure (per-thread block > half of L2)
+#   2m,4m      4 x 2 MB .. 4 x 4 MB = 8-16 MB  -> spills the shared L3
+#   8m..256m   32 MB .. 1 GB       -> large working set, sustained DRAM traffic expected
+# With --memory-scope=global all threads share ONE block (aggregate = block).
 #
 set -uo pipefail
 # shellcheck source=lib.sh
@@ -66,11 +70,11 @@ gen_mem() {  # category blocks ops accesses threads scopes
 # 0. reference: GPU alone (monitors still running)
 add baseline baseline none - - - - -
 
-# 1. cache-resident traffic (private buffers; stays in L1/L2/L3)
-gen_mem cache_resident "16k 32k 128k 256k 1m" "read write" "seq rnd" "$NT" local
+# 1. small working set (private buffers, aggregate <= 1 MB; expected to stay in L1/L2/L3)
+gen_mem cache_resident "16k 32k 128k 256k" "read write" "seq rnd" "$NT" local
 
-# 2. cache eviction: working set spills the shared L3, some DRAM traffic
-gen_mem cache_evict "2m 4m" "read write" "seq rnd" "$NT" local
+# 2. cache pressure: aggregate block*threads above the 2 MB L3 (1m = 4 MB, 2m = 8 MB, 4m = 16 MB)
+gen_mem cache_evict "1m 2m 4m" "read write" "seq rnd" "$NT" local
 
 # 3. DRAM streaming (prefetcher-friendly, max bandwidth)
 gen_mem dram_stream "8m 16m 64m 256m" "read write" seq "$NT" local
