@@ -1,5 +1,5 @@
 {
-  "execution_date": "2026-10-28 01:36:47",
+  "execution_date": "2026-10-28 02:18:20",
   "split_summary": {
     "train_samples": 65,
     "val_samples": 14,
@@ -109,8 +109,8 @@
     {
       "Model": "Random Forest",
       "Architecture": "Ensemble (Bagging of Decision Trees)",
-      "Fit Time (ms)": 287.35,
-      "Inf Latency (us/sample)": 350.25,
+      "Fit Time (ms)": 307.48,
+      "Inf Latency (us/sample)": 414.99,
       "Train R2": 0.9985,
       "Train RMSE": 0.0901,
       "Train MAE": 0.0354,
@@ -121,7 +121,7 @@
       "Test RMSE": 0.1415,
       "Test MAE": 0.0654,
       "Test MAPE (%)": 3.01,
-      "Artifact": "models/mempi_random_forest_model.pkl",
+      "Artifact": "/home/pi/monpi/mempi/ml/model/models/mempi_random_forest_model.pkl",
       "Parameters": {
         "n_estimators": 100,
         "criterion": "squared_error",
@@ -132,8 +132,8 @@
     {
       "Model": "Gradient Boosting",
       "Architecture": "Ensemble (Sequential Gradient Boosted Trees)",
-      "Fit Time (ms)": 168.22,
-      "Inf Latency (us/sample)": 96.13,
+      "Fit Time (ms)": 178.8,
+      "Inf Latency (us/sample)": 91.62,
       "Train R2": 1.0,
       "Train RMSE": 0.0006,
       "Train MAE": 0.0004,
@@ -144,7 +144,7 @@
       "Test RMSE": 0.0861,
       "Test MAE": 0.0527,
       "Test MAPE (%)": 1.95,
-      "Artifact": "models/mempi_gradient_boosting_model.pkl",
+      "Artifact": "/home/pi/monpi/mempi/ml/model/models/mempi_gradient_boosting_model.pkl",
       "Parameters": {
         "n_estimators": 100,
         "learning_rate": 0.1,
@@ -156,8 +156,8 @@
     {
       "Model": "Extra Trees",
       "Architecture": "Ensemble (Extremely Randomized Trees)",
-      "Fit Time (ms)": 151.98,
-      "Inf Latency (us/sample)": 357.42,
+      "Fit Time (ms)": 151.27,
+      "Inf Latency (us/sample)": 351.5,
       "Train R2": 1.0,
       "Train RMSE": 0.0,
       "Train MAE": 0.0,
@@ -168,7 +168,7 @@
       "Test RMSE": 0.0919,
       "Test MAE": 0.0419,
       "Test MAPE (%)": 1.87,
-      "Artifact": "models/mempi_extra_trees_model.pkl",
+      "Artifact": "/home/pi/monpi/mempi/ml/model/models/mempi_extra_trees_model.pkl",
       "Parameters": {
         "n_estimators": 100,
         "criterion": "squared_error",
@@ -179,8 +179,8 @@
     {
       "Model": "Ridge Linear",
       "Architecture": "L2 Regularized Linear Regression",
-      "Fit Time (ms)": 5.44,
-      "Inf Latency (us/sample)": 78.66,
+      "Fit Time (ms)": 5.47,
+      "Inf Latency (us/sample)": 75.6,
       "Train R2": 0.9997,
       "Train RMSE": 0.0413,
       "Train MAE": 0.0272,
@@ -191,7 +191,7 @@
       "Test RMSE": 0.052,
       "Test MAE": 0.0333,
       "Test MAPE (%)": 1.29,
-      "Artifact": "models/mempi_ridge_linear_model.pkl",
+      "Artifact": "/home/pi/monpi/mempi/ml/model/models/mempi_ridge_linear_model.pkl",
       "Parameters": {
         "alpha": 1.0,
         "solver": "auto",
@@ -201,8 +201,8 @@
     {
       "Model": "SVR (RBF Kernel)",
       "Architecture": "Support Vector Regression with RBF Kernel",
-      "Fit Time (ms)": 4.51,
-      "Inf Latency (us/sample)": 101.87,
+      "Fit Time (ms)": 4.91,
+      "Inf Latency (us/sample)": 90.51,
       "Train R2": 0.9997,
       "Train RMSE": 0.0407,
       "Train MAE": 0.0373,
@@ -213,7 +213,7 @@
       "Test RMSE": 0.1416,
       "Test MAE": 0.1015,
       "Test MAPE (%)": 4.84,
-      "Artifact": "models/mempi_svr_rbf_kernel_model.pkl",
+      "Artifact": "/home/pi/monpi/mempi/ml/model/models/mempi_svr_rbf_kernel_model.pkl",
       "Parameters": {
         "kernel": "rbf",
         "C": 10.0,

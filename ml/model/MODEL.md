@@ -352,39 +352,39 @@ Execute system interference experiments to collect V3D counters under memory and
 # Run representative memory and CPU interference experiments
 sudo ./monitor_interference.sh -c dram_stream,cache_resident,cpu_side
 
-# Compile the raw experiment outputs in data/*/ into dataset.csv
-python3 build_dataset.py
+# Compile the raw experiment outputs in data/*/ into ml/dataset/dataset.csv
+python3 ml/dataset/build_dataset.py
 ```
 
 *Output Artifact:*
-- `dataset.csv`: 93 samples $\times$ 93 V3D hardware performance counters with calculated `slowdown` and `e2e_latency_ms`.
+- `ml/dataset/dataset.csv`: 93 samples $\times$ 93 V3D hardware performance counters with calculated `slowdown` and `e2e_latency_ms`.
 
 ---
 
 ### 7.5 Step 4: Training & Benchmarking the Machine Learning Models
 
-Run `train_models.py` to execute the full multi-model training pipeline:
+Run `ml/model/train_models.py` to execute the full multi-model training pipeline:
 
 ```bash
-python3 train_models.py --dataset dataset.csv --export-dir models --seed 42
+python3 ml/model/train_models.py
 ```
 
 *Pipeline Operations:*
-1. Loads `dataset.csv` and extracts 93 V3D hardware performance counter features.
+1. Loads `ml/dataset/dataset.csv` and extracts 93 V3D hardware performance counter features.
 2. Performs a 70% Train, 15% Validation, 15% Test split.
 3. Fits 5 distinct architectures: Random Forest, Gradient Boosting, Extra Trees, Ridge Linear, and SVR (RBF).
 4. Benchmarks training time, inference latency ($\mu\text{s/sample}$), $R^2$, RMSE, MAE, and MAPE.
-5. Exports models to `models/*.pkl` and generates `model_benchmark_results.csv` and `model_benchmark_results.json`.
+5. Exports models to `ml/model/models/*.pkl` and generates `ml/model/model_benchmark_results.csv` and `ml/model/model_benchmark_results.json`.
 
 ---
 
 ### 7.6 Step 5: Real-Time Inference & Latency Prediction
 
-Use `inference.py` to run predictions using individual models or compare all models simultaneously:
+Use `ml/infer/inference.py` to run predictions using individual models or compare all models simultaneously:
 
 #### Option A: Predict for a Specific Interference Scenario
 ```bash
-python3 inference.py --experiment 64mw_rnd --model models/mempi_gradient_boosting_model.pkl
+python3 ml/infer/inference.py --experiment 64mw_rnd --model ml/model/models/mempi_gradient_boosting_model.pkl
 ```
 
 *Output:*
@@ -398,12 +398,12 @@ python3 inference.py --experiment 64mw_rnd --model models/mempi_gradient_boostin
 
 #### Option B: Multi-Model Side-by-Side Comparison
 ```bash
-python3 inference.py --compare-all
+python3 ml/infer/inference.py --compare-all
 ```
 
 #### Option C: Predict on New Custom Counter Vector CSV
 ```bash
-python3 inference.py --input-csv custom_sample.csv --model models/mempi_ridge_linear_model.pkl
+python3 ml/infer/inference.py --input-csv custom_sample.csv --model ml/model/models/mempi_ridge_linear_model.pkl
 ```
 
 ---

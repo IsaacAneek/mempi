@@ -7,13 +7,13 @@ Extra Trees, Ridge, SVR) to predict GPU interference slowdown and latency.
 
 Usage:
   # Predict for an experiment from dataset:
-  python3 inference.py --experiment 64mw_rnd
+  python3 ml/infer/inference.py --experiment 64mw_rnd
 
-  # Predict for all test samples comparing all models:
-  python3 inference.py --compare-all
+  # Predict for representative test samples comparing all models:
+  python3 ml/infer/inference.py --compare-all
 
   # Predict using a custom input CSV of counters:
-  python3 inference.py --input-csv custom_sample.csv --model models/mempi_gradient_boosting_model.pkl
+  python3 ml/infer/inference.py --input-csv custom_sample.csv --model ml/model/models/mempi_gradient_boosting_model.pkl
 """
 
 import os
@@ -25,22 +25,45 @@ import joblib
 import numpy as np
 import pandas as pd
 
-MODELS_DIR = "models"
-DATASET_PATH = "dataset.csv"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+# Resolve models directory
+CANDIDATE_MODEL_DIRS = [
+    os.path.join(REPO_ROOT, "ml", "model", "models"),
+    os.path.join(SCRIPT_DIR, "..", "model", "models"),
+    os.path.join(SCRIPT_DIR, "models"),
+    "models"
+]
+DEFAULT_MODELS_DIR = next((d for d in CANDIDATE_MODEL_DIRS if os.path.isdir(d)), CANDIDATE_MODEL_DIRS[0])
+
+# Resolve dataset location
+CANDIDATE_DATASETS = [
+    os.path.join(REPO_ROOT, "ml", "dataset", "dataset.csv"),
+    os.path.join(SCRIPT_DIR, "..", "dataset", "dataset.csv"),
+    os.path.join(SCRIPT_DIR, "dataset.csv"),
+    "dataset.csv"
+]
+DEFAULT_DATASET = next((p for p in CANDIDATE_DATASETS if os.path.exists(p)), CANDIDATE_DATASETS[0])
+
 BASELINE_LATENCY_MS = 4116.0  # Measured baseline latency in ms
 
 
-def find_available_models(models_dir=MODELS_DIR):
-    if not os.path.exists(models_dir):
-        # Fallback to root pkl files
-        root_models = glob.glob("*.pkl")
-        return {os.path.splitext(os.path.basename(m))[0]: m for m in root_models}
-    
-    model_files = glob.glob(os.path.join(models_dir, "*.pkl"))
+def find_available_models(models_dir=DEFAULT_MODELS_DIR):
     models = {}
-    for mf in model_files:
-        name = os.path.basename(mf).replace("mempi_", "").replace("_model.pkl", "").replace(".pkl", "")
-        models[name] = mf
+    if os.path.isdir(models_dir):
+        for mf in glob.glob(os.path.join(models_dir, "*.pkl")):
+            name = os.path.basename(mf).replace("mempi_", "").replace("_model.pkl", "").replace(".pkl", "")
+            models[name] = mf
+            
+    # Check parent model dir for single pkl files
+    model_parent = os.path.dirname(models_dir)
+    if os.path.isdir(model_parent):
+        for mf in glob.glob(os.path.join(model_parent, "*.pkl")):
+            name = os.path.basename(mf).replace("mempi_", "").replace("_model.pkl", "").replace(".pkl", "")
+            if name not in models:
+                models[name] = mf
+
     return models
 
 
@@ -58,17 +81,18 @@ def run_inference(model, features_df, baseline_ms=BASELINE_LATENCY_MS):
 
 def main():
     parser = argparse.ArgumentParser(description="MemPi Multi-Model Inference Engine")
-    parser.add_argument("--model", default="all", help="Path to model file or 'all'")
+    parser.add_argument("--model", default="all", help=f"Path to model file, model alias, or 'all'")
+    parser.add_argument("--models-dir", default=DEFAULT_MODELS_DIR, help=f"Directory containing model artifacts (default: {DEFAULT_MODELS_DIR})")
     parser.add_argument("--experiment", default=None, help="Experiment name from dataset.csv (e.g. 64mw_rnd)")
     parser.add_argument("--input-csv", default=None, help="CSV file containing V3D counter feature columns")
-    parser.add_argument("--dataset", default=DATASET_PATH, help="Path to dataset.csv")
+    parser.add_argument("--dataset", default=DEFAULT_DATASET, help=f"Path to dataset.csv (default: {DEFAULT_DATASET})")
     parser.add_argument("--compare-all", action="store_true", help="Run side-by-side comparison across all models on sample data")
     parser.add_argument("--baseline-ms", type=float, default=BASELINE_LATENCY_MS, help="Baseline GPU latency in ms")
     args = parser.parse_args()
 
-    models_available = find_available_models()
+    models_available = find_available_models(args.models_dir)
     if not models_available:
-        print("No trained models found! Please run 'python3 train_models.py' first.")
+        print(f"No trained models found in '{args.models_dir}'! Please run 'python3 ml/model/train_models.py' first.")
         sys.exit(1)
 
     # Determine input features
@@ -156,4 +180,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -452,7 +452,9 @@ def main():
         print("\n" + "=" * 80)
         print("RUNNING MULTI-MODEL EVALUATION ON DATASET")
         print("=" * 80)
-        dataset_file = os.path.join(os.path.dirname(__file__), "..", "dataset.csv")
+        dataset_file = os.path.join(os.path.dirname(__file__), "..", "ml", "dataset", "dataset.csv")
+        if not os.path.exists(dataset_file):
+            dataset_file = os.path.join(os.path.dirname(__file__), "..", "dataset.csv")
         if os.path.exists(dataset_file):
             from sklearn.model_selection import train_test_split
             df = pd.read_csv(dataset_file)

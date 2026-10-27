@@ -1,0 +1,6 @@
+Model,Architecture,Fit Time (ms),Inf Latency (us/sample),Train R2,Val R2,Test R2,Train RMSE,Val RMSE,Test RMSE,Train MAE,Val MAE,Test MAE,Test MAPE (%),Artifact
+Random Forest,Ensemble (Bagging of Decision Trees),307.48,414.99,0.9985,0.9854,0.9976,0.0901,0.3246,0.1415,0.0354,0.1709,0.0654,3.01,/home/pi/monpi/mempi/ml/model/models/mempi_random_forest_model.pkl
+Gradient Boosting,Ensemble (Sequential Gradient Boosted Trees),178.8,91.62,1.0,0.9995,0.9991,0.0006,0.0601,0.0861,0.0004,0.0419,0.0527,1.95,/home/pi/monpi/mempi/ml/model/models/mempi_gradient_boosting_model.pkl
+Extra Trees,Ensemble (Extremely Randomized Trees),151.27,351.5,1.0,0.9993,0.999,0.0,0.0697,0.0919,0.0,0.0349,0.0419,1.87,/home/pi/monpi/mempi/ml/model/models/mempi_extra_trees_model.pkl
+Ridge Linear,L2 Regularized Linear Regression,5.47,75.6,0.9997,0.9993,0.9997,0.0413,0.0733,0.052,0.0272,0.0495,0.0333,1.29,/home/pi/monpi/mempi/ml/model/models/mempi_ridge_linear_model.pkl
+SVR (RBF Kernel),Support Vector Regression with RBF Kernel,4.91,90.51,0.9997,0.9942,0.9976,0.0407,0.2038,0.1416,0.0373,0.1363,0.1015,4.84,/home/pi/monpi/mempi/ml/model/models/mempi_svr_rbf_kernel_model.pkl

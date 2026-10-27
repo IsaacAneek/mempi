@@ -29,13 +29,24 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error, max_error
 
-DATASET_PATH = "dataset.csv"
-MODELS_DIR = "models"
-OUTPUT_CSV = "model_benchmark_results.csv"
-OUTPUT_JSON = "model_benchmark_results.json"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+# Resolve dataset location
+CANDIDATE_DATASETS = [
+    os.path.join(REPO_ROOT, "ml", "dataset", "dataset.csv"),
+    os.path.join(SCRIPT_DIR, "..", "dataset", "dataset.csv"),
+    os.path.join(SCRIPT_DIR, "dataset.csv"),
+    "dataset.csv"
+]
+DEFAULT_DATASET = next((p for p in CANDIDATE_DATASETS if os.path.exists(p)), CANDIDATE_DATASETS[0])
+
+DEFAULT_MODELS_DIR = os.path.join(SCRIPT_DIR, "models")
+DEFAULT_OUTPUT_CSV = os.path.join(SCRIPT_DIR, "model_benchmark_results.csv")
+DEFAULT_OUTPUT_JSON = os.path.join(SCRIPT_DIR, "model_benchmark_results.json")
 
 
-def load_dataset(csv_path=DATASET_PATH):
+def load_dataset(csv_path=DEFAULT_DATASET):
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"Dataset '{csv_path}' not found!")
     df = pd.read_csv(csv_path)
@@ -141,7 +152,6 @@ def compute_metrics(y_true, y_pred):
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
     max_e = max_error(y_true, y_pred)
-    # Mean Absolute Percentage Error
     mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
     return {
         "R2": float(r2),
@@ -152,7 +162,7 @@ def compute_metrics(y_true, y_pred):
     }
 
 
-def train_and_benchmark(splits, random_state=42, export_dir=MODELS_DIR):
+def train_and_benchmark(splits, random_state=42, export_dir=DEFAULT_MODELS_DIR):
     os.makedirs(export_dir, exist_ok=True)
     models_dict = get_models(random_state)
     
@@ -199,9 +209,9 @@ def train_and_benchmark(splits, random_state=42, export_dir=MODELS_DIR):
         filepath = os.path.join(export_dir, filename)
         joblib.dump(estimator, filepath)
         
-        # Keep root mempi_rf_model.pkl updated for backward compatibility
+        # Keep local mempi_rf_model.pkl updated
         if "Random Forest" in name:
-            joblib.dump(estimator, "mempi_rf_model.pkl")
+            joblib.dump(estimator, os.path.join(SCRIPT_DIR, "mempi_rf_model.pkl"))
             
         trained_instances[name] = estimator
         
@@ -232,7 +242,7 @@ def train_and_benchmark(splits, random_state=42, export_dir=MODELS_DIR):
     return results, trained_instances
 
 
-def save_reports(results, split_info, feature_cols):
+def save_reports(results, split_info, feature_cols, output_csv=DEFAULT_OUTPUT_CSV, output_json=DEFAULT_OUTPUT_JSON):
     df_results = pd.DataFrame(results)
     
     # Save CSV summary
@@ -242,7 +252,7 @@ def save_reports(results, split_info, feature_cols):
         "Train RMSE", "Val RMSE", "Test RMSE",
         "Train MAE", "Val MAE", "Test MAE", "Test MAPE (%)", "Artifact"
     ]
-    df_results[summary_cols].to_csv(OUTPUT_CSV, index=False)
+    df_results[summary_cols].to_csv(output_csv, index=False)
     
     # Save JSON summary with full metadata
     report = {
@@ -252,21 +262,23 @@ def save_reports(results, split_info, feature_cols):
         "input_features": feature_cols,
         "models": results
     }
-    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
+    with open(output_json, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
         
-    print(f"Results successfully saved to '{OUTPUT_CSV}' and '{OUTPUT_JSON}'.")
+    print(f"Results successfully saved to '{output_csv}' and '{output_json}'.")
 
 
 def main():
     parser = argparse.ArgumentParser(description="MemPi Multi-Model Trainer & Benchmarker")
-    parser.add_argument("--dataset", default=DATASET_PATH, help="Path to input dataset.csv")
-    parser.add_argument("--export-dir", default=MODELS_DIR, help="Directory to save serialized models")
+    parser.add_argument("--dataset", default=DEFAULT_DATASET, help=f"Path to input dataset.csv (default: {DEFAULT_DATASET})")
+    parser.add_argument("--export-dir", default=DEFAULT_MODELS_DIR, help=f"Directory to save serialized models (default: {DEFAULT_MODELS_DIR})")
+    parser.add_argument("--output-csv", default=DEFAULT_OUTPUT_CSV, help=f"Output CSV path (default: {DEFAULT_OUTPUT_CSV})")
+    parser.add_argument("--output-json", default=DEFAULT_OUTPUT_JSON, help=f"Output JSON path (default: {DEFAULT_OUTPUT_JSON})")
     parser.add_argument("--seed", type=int, default=42, help="Random state seed")
     args = parser.parse_args()
     
     df, X, y, feature_cols, experiments, e2e_lat = load_dataset(args.dataset)
-    print(f"Loaded dataset: {len(df)} samples, {len(feature_cols)} V3D hardware counter features.")
+    print(f"Loaded dataset: {len(df)} samples, {len(feature_cols)} V3D hardware counter features from '{args.dataset}'.")
     
     splits, split_info = split_data(X, y, experiments, e2e_lat, random_state=args.seed)
     print(f"Train/Val/Test Split: Train={split_info['train_samples']} ({split_info['train_pct']:.1f}%), "
@@ -274,9 +286,8 @@ def main():
           f"Test={split_info['test_samples']} ({split_info['test_pct']:.1f}%)")
     
     results, trained_instances = train_and_benchmark(splits, random_state=args.seed, export_dir=args.export_dir)
-    save_reports(results, split_info, feature_cols)
+    save_reports(results, split_info, feature_cols, output_csv=args.output_csv, output_json=args.output_json)
 
 
 if __name__ == "__main__":
     main()
-

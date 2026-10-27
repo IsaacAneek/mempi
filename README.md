@@ -264,3 +264,80 @@ bash scripts/run_gpu_task.sh                                     # just gpu_task
   flagged (`negative_residual`) and reported on stderr instead of being clamped to zero.
   Report it as an absolute difference with its spread over repeated runs; the ratio to the
   baseline is unstable because the baseline residual is tiny.
+
+## 13. Machine Learning Pipeline (`ml/`)
+
+The repository includes a complete machine learning subsystem organized inside `ml/` for predicting GPU interference degradation, slowdown factors, and end-to-end latency from VideoCore VII hardware performance counters:
+
+```
+ml/
+├── dataset/
+│   ├── build_dataset.py            # Parses data/*/ logs into dataset.csv
+│   └── dataset.csv                 # 93 samples x 93 V3D hardware counter features
+├── model/
+│   ├── train_models.py             # Trains & benchmarks 5 ML models with 70/15/15 split
+│   ├── MODEL.md                    # In-depth architectural & benchmark documentation
+│   ├── model_benchmark_results.csv # Side-by-side benchmark metrics (R2, RMSE, MAE, latency)
+│   ├── model_benchmark_results.json# Detailed JSON benchmark report
+│   ├── mempi_rf_model.pkl          # Serialized Random Forest model
+│   └── models/                     # Serialized model artifacts
+│       ├── mempi_gradient_boosting_model.pkl
+│       ├── mempi_ridge_linear_model.pkl
+│       ├── mempi_random_forest_model.pkl
+│       ├── mempi_extra_trees_model.pkl
+│       └── mempi_svr_rbf_kernel_model.pkl
+└── infer/
+    └── inference.py                # Multi-model inference and latency prediction engine
+```
+
+### 13.1 Requirements
+
+```bash
+pip install numpy pandas scikit-learn joblib matplotlib
+```
+
+### 13.2 Running the Full Pipeline
+
+#### 1. Compile and Benchmark GPU Compute Shaders
+```bash
+# Generate C tasks and compile into bin/
+python3 build_all.py
+
+# Benchmark all 10 GPU tasks across 400 dispatches
+python3 run_benchmarks.py
+```
+
+#### 2. Build or Update the Dataset
+Parses all experiment logs in `data/*/` (`gpu_task.txt` and `v3d_counters.txt`) against `data/baseline/` and compiles `ml/dataset/dataset.csv`:
+```bash
+python3 ml/dataset/build_dataset.py
+```
+
+#### 3. Train and Benchmark the Models
+Performs a 70% Train, 15% Validation, 15% Test split across the 93 V3D hardware counters and trains 5 regression models (Ridge Linear, Gradient Boosting, Extra Trees, Random Forest, SVR):
+```bash
+python3 ml/model/train_models.py
+```
+Outputs trained model files into `ml/model/models/` and performance benchmarks into `ml/model/model_benchmark_results.csv` and `ml/model/model_benchmark_results.json`.
+
+#### 4. Run Real-Time Inference & Latency Prediction
+Run predictions using `ml/infer/inference.py`:
+
+```bash
+# Side-by-side comparison across all models on representative scenarios:
+python3 ml/infer/inference.py --compare-all
+
+# Predict slowdown and latency for a specific experiment from dataset:
+python3 ml/infer/inference.py --experiment 64mw_rnd --model ml/model/models/mempi_gradient_boosting_model.pkl
+
+# Predict on new unseen counter features from a custom CSV:
+python3 ml/infer/inference.py --input-csv custom_sample.csv --model ml/model/models/mempi_ridge_linear_model.pkl
+```
+
+#### 5. Multi-Model Evaluation in Analysis Suite
+Run parameter visualization with multi-model evaluation:
+```bash
+python3 analysis/mem-gpu.py --evaluate-models
+```
+
+For full details on model architectures, hyperparameters, top feature importances, and validation methodology, see [`ml/model/MODEL.md`].
