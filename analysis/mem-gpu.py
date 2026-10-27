@@ -39,6 +39,11 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
+import glob
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import Ridge
+from sklearn.svm import SVR
+from sklearn.metrics import mean_squared_error, r2_score
 
 sys.path.insert(0, os.path.dirname(__file__))
 from data_loader import load_all, DATA_DIR
@@ -113,13 +118,51 @@ def scenario_label(params):
     oper = params.get("oper", "")
     return f"{block} {oper}\n({acc})"
 
-
 def sort_key(d):
     p = d["params"]
     cat_rank = CAT_SORT_ORDER.get(p.get("category"), 99)
     block_b = p.get("footprint_bytes", 0) or p.get("block_bytes", 0)
     name = p.get("name", "")
     return (cat_rank, block_b, name)
+
+def load_all_task_data(base_dir="data"):
+    # Dynamically find all task directories (e.g., task1, task2, ..., task10)
+    task_dirs = glob.glob(os.path.join(base_dir, "task*"))
+    all_data = []
+
+    for t_dir in task_dirs:
+        task_name = os.path.basename(t_dir)
+        csv_files = glob.glob(os.path.join(t_dir, "*.csv"))
+        
+        for file in csv_files:
+            df = pd.read_csv(file)
+            df['task_id'] = task_name  # Tag data with its specific task source
+            all_data.append(df)
+            
+    if all_data:
+        return pd.concat(all_data, ignore_index=True)
+    return pd.DataFrame()
+
+def evaluate_models(X_train, X_test, y_train, y_test):
+    models = {
+        "Random Forest": RandomForestRegressor(n_estimators=100, random_state=42),
+        "Gradient Boosting": GradientBoostingRegressor(random_state=42),
+        "Ridge Linear": Ridge(alpha=1.0),
+        "SVR": SVR(kernel='rbf')
+    }
+
+    results = {}
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        predictions = model.predict(X_test)
+
+        r2 = r2_score(y_test, predictions)
+        rmse = np.sqrt(mean_squared_error(y_test, predictions))
+
+        results[name] = {"R2": r2, "RMSE": rmse}
+        print(f"[{name}] -> R2: {r2:.4f} | RMSE: {rmse:.4f}")
+
+    return results
 
 
 def main():

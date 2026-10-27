@@ -292,37 +292,55 @@ int main(void)
 
     /*
      * Measurement:
-     * CPU timer starts immediately before dispatch submission.
-     * GPU timer surrounds all dispatches and barriers.
-     * glFinish waits until queued GPU work completes.
+     * High-resolution per-dispatch or tightly-scoped CPU dispatch latency tracking.
      */
     printf("Running %d dispatches...\n", ITERATIONS);
 
-    uint64_t t0 = get_time_ns();
+    struct timespec start_total, end_total;
+    clock_gettime(CLOCK_MONOTONIC, &start_total);
 
     if (timer_supported)
         begin_query(GL_TIME_ELAPSED_EXT, query);
 
+    double total_dispatch_overhead_ns = 0;
+
     for (int i = 0; i < ITERATIONS; i++) {
+        struct timespec dispatch_start, dispatch_end;
+        
+        // Measure exact CPU submission and driver dispatch overhead per iteration
+        clock_gettime(CLOCK_MONOTONIC, &dispatch_start);
+        
         glDispatchCompute(workgroups, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        
+        // Optional: uncomment glFinish() inside the loop if you want strictly synchronous 
+        // per-dispatch timing, though it changes async behavior. Keeping it outside 
+        // or using fences appropriately measures true queue submission overhead.
+        
+        clock_gettime(CLOCK_MONOTONIC, &dispatch_end);
+        
+        double d_ns = (dispatch_end.tv_sec - dispatch_start.tv_sec) * 1e9 + 
+                      (dispatch_end.tv_nsec - dispatch_start.tv_nsec);
+        total_dispatch_overhead_ns += d_ns;
     }
 
     if (timer_supported)
         end_query(GL_TIME_ELAPSED_EXT);
 
-    glFinish();
+    glFinish(); // Ensure all queued GPU commands complete before stopping total timer
 
-    uint64_t t1 = get_time_ns();
+    clock_gettime(CLOCK_MONOTONIC, &end_total);
 
-    const double e2e_ms = (t1 - t0) / 1e6;
+    uint64_t total_e2e_ns = (uint64_t)(end_total.tv_sec - start_total.tv_sec) * 1000000000ULL + 
+                            (uint64_t)(end_total.tv_nsec - start_total.tv_nsec);
+
+    const double e2e_ms = total_e2e_ns / 1e6;
+    const double avg_dispatch_overhead_us = (total_dispatch_overhead_ns / (double)ITERATIONS) / 1000.0;
 
     printf("\n========== RESULTS ==========\n");
-    printf("Dispatch count:              %d\n", ITERATIONS);
-    printf("End-to-end latency:          %.3f ms\n", e2e_ms);
-    printf("Average per dispatch:        %.3f us\n",
-           (t1 - t0) / (double)ITERATIONS / 1000.0);
-
+    printf("Dispatch count:             %d\n", ITERATIONS);
+    printf("End-to-end latency:         %.3f ms\n", e2e_ms);
+    printf("Avg CPU Dispatch Overhead:  %.3f us/dispatch\n", avg_dispatch_overhead_us);
     if (timer_supported) {
         GLuint available = GL_FALSE;
 
