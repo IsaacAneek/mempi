@@ -1,15 +1,15 @@
 # GPU Compute Shader Benchmark Report
-**Execution Date:** 2026-10-22 14:14:51
+**Execution Date:** 2026-10-28 01:33:19
 
 | Task | E2E Latency (ms) | Avg Dispatch (us) | Status |
 | :--- | :---: | :---: | :---: |
-| `task10_val_comp` | 2361.529 | 5903.821 | **PASS** |
-| `task1_train_mem` | 7375.356 | 18438.390 | **PASS** |
-| `task2_train_mem` | 8628.716 | 21571.789 | **PASS** |
-| `task3_train_comp` | 4733.083 | 11832.707 | **PASS** |
-| `task4_train_comp` | 5168.850 | 12922.125 | **PASS** |
-| `task5_train_hyb` | 3412.641 | 8531.602 | **PASS** |
-| `task6_train_hyb` | 8618.929 | 21547.323 | **PASS** |
-| `task7_test_hyb1` | 3433.904 | 8584.761 | **PASS** |
-| `task8_test_hyb2` | 3442.829 | 8607.073 | **PASS** |
-| `task9_val_hyb` | 3425.964 | 8564.909 | **PASS** |
+| `task10_val_comp` | 2638.553 | 6596.384 | **PASS** |
+| `task1_train_mem` | 7608.219 | 19020.547 | **PASS** |
+| `task2_train_mem` | 10301.054 | 25752.634 | **PASS** |
+| `task3_train_comp` | 5026.575 | 12566.438 | **PASS** |
+| `task4_train_comp` | 5394.569 | 13486.423 | **PASS** |
+| `task5_train_hyb` | 3730.455 | 9326.139 | **PASS** |
+| `task6_train_hyb` | 9512.703 | 23781.757 | **PASS** |
+| `task7_test_hyb1` | 3685.024 | 9212.559 | **PASS** |
+| `task8_test_hyb2` | 3739.100 | 9347.750 | **PASS** |
+| `task9_val_hyb` | 3687.410 | 9218.526 | **PASS** |

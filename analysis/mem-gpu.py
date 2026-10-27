@@ -447,6 +447,23 @@ def main():
         print(f"{p['name']:<14s} {p['category']:<15s} {p['mode']:<8s} {p['block_str']:>6s} {bw:>10.1f} "
               f"{e2e:>10.1f} {comp:>10.1f} {disp:>10.3f} {c_deg:>8.2f}× {d_deg:>8.2f}×")
 
+    # If --evaluate-models flag is supplied
+    if "--evaluate-models" in sys.argv:
+        print("\n" + "=" * 80)
+        print("RUNNING MULTI-MODEL EVALUATION ON DATASET")
+        print("=" * 80)
+        dataset_file = os.path.join(os.path.dirname(__file__), "..", "dataset.csv")
+        if os.path.exists(dataset_file):
+            from sklearn.model_selection import train_test_split
+            df = pd.read_csv(dataset_file)
+            feature_cols = [c for c in df.columns if c not in ["experiment", "e2e_latency_ms", "slowdown"]]
+            X = df[feature_cols]
+            y = df["slowdown"]
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            evaluate_models(X_train, X_test, y_train, y_test)
+        else:
+            print(f"Dataset file {dataset_file} not found.")
+
 
 if __name__ == "__main__":
     main()
