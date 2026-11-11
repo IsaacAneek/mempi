@@ -41,11 +41,22 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
-from data_loader import load_all, load_v3d_counters, get_active_v3d, DATA_DIR
+from data_loader import (
+    load_all,
+    load_v3d_counters,
+    get_active_v3d,
+    DATA_DIR,
+    CAT_PALETTE,
+    CAT_SORT_ORDER,
+    pair_sort_key,
+    compute_pair_positions,
+    split_data_parts,
+)
 
 PLOT_DIR = os.path.join(os.path.dirname(__file__), "plots")
 os.makedirs(PLOT_DIR, exist_ok=True)
@@ -57,32 +68,6 @@ plt.rcParams.update({
     "grid.alpha": 0.3,
     "font.size": 10,
 })
-
-CAT_PALETTE = {
-    "baseline": "#4CAF50",         # Green
-    "cpu_side": "#795548",         # Brown
-    "pagefault": "#607D8B",        # Blue Grey
-    "cache_resident": "#2196F3",   # Blue
-    "l2_l3_resident": "#FF9800",   # Orange
-    "cache_evict": "#F44336",      # Red
-    "dram_stream": "#D32F2F",      # Crimson
-    "dram_random": "#9C27B0",      # Purple
-    "coherence": "#00BCD4",        # Cyan
-    "thread_sweep": "#E91E63",     # Pink
-}
-
-CAT_SORT_ORDER = {
-    "baseline": 0,
-    "cpu_side": 1,
-    "pagefault": 2,
-    "coherence": 3,
-    "cache_resident": 4,
-    "l2_l3_resident": 5,
-    "cache_evict": 6,
-    "dram_stream": 7,
-    "dram_random": 8,
-    "thread_sweep": 9,
-}
 
 
 def scenario_color(params):
@@ -119,11 +104,7 @@ def nice_label(name, params=None):
 
 
 def sort_key(d):
-    p = d["params"]
-    cat_rank = CAT_SORT_ORDER.get(p.get("category"), 99)
-    block_b = p.get("footprint_bytes", 0) or p.get("block_bytes", 0)
-    name = p.get("name", "")
-    return (cat_rank, block_b, name)
+    return pair_sort_key(d)
 
 
 def aggregate_v3d_counters(folder):
@@ -149,8 +130,8 @@ def main():
         print("No data found!")
         return
 
-    # Sort deterministically: all scenarios included!
-    data.sort(key=sort_key)
+    # Sort deterministically: all scenarios included, with read/write counterpart pairs consecutive!
+    data.sort(key=pair_sort_key)
 
     baseline = next((d for d in data if d["params"]["category"] == "baseline" or d["params"]["name"] == "baseline"), None)
     base_e2e = baseline["gpu"]["e2e_ms"] if baseline else 4120.0
@@ -166,51 +147,115 @@ def main():
         agg[name] = aggregate_v3d_counters(d["folder"])
 
     names = [d["params"]["name"] for d in data]
-    x = np.arange(len(names))
-    colors_list = [scenario_color(d["params"]) for d in data]
-    x_labels = [nice_label(n, d["params"]) for n, d in zip(names, data)]
+
+    # Split data into Part 1 (CPU & Cache <= 4 MiB) and Part 2 (DRAM, Sweeps, System >= 8 MiB)
+    data_p1, data_p2 = split_data_parts(data)
+
+    bar_w = 0.38
+    x1, ticks1, labels1 = compute_pair_positions(data_p1, bar_width=bar_w, pair_gap=0.06, group_gap=0.55)
+    x2, ticks2, labels2 = compute_pair_positions(data_p2, bar_width=bar_w, pair_gap=0.06, group_gap=0.55)
+
+    names1 = [d["params"]["name"] for d in data_p1]
+    names2 = [d["params"]["name"] for d in data_p2]
+
+    colors1 = [scenario_color(d["params"]) for d in data_p1]
+    colors2 = [scenario_color(d["params"]) for d in data_p2]
+
+    # Legend elements for Read vs Write distinction
+    legend_read = Patch(facecolor="#9E9E9E", edgecolor="black", label="Read (solid)")
+    legend_write = Patch(facecolor="#9E9E9E", edgecolor="black", hatch="//", label="Write (hatched //)")
 
     def get_counter(name, counter):
         return agg.get(name, {}).get(counter, 0)
 
-    # ── Plot 1: L2T Cache Hit Rate (EVERY Scenario) ──────────────────────
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    # ── Plot 1: L2T Cache Hit Rate (Split: Part 1 vs Part 2) ──────────────────────────
+    fig, axes = plt.subplots(2, 2, figsize=(20, 11))
 
-    l2t_hits = [get_counter(n, "L2T-total-cache-hit") for n in names]
-    l2t_miss = [get_counter(n, "L2T-total-cache-miss") for n in names]
-    l2t_total = [h + m if (h + m) > 0 else 1 for h, m in zip(l2t_hits, l2t_miss)]
-    hit_rate = [h / t * 100 for h, t in zip(l2t_hits, l2t_total)]
+    # Row 0: Part 1
+    l2t_hits1 = [get_counter(n, "L2T-total-cache-hit") for n in names1]
+    l2t_miss1 = [get_counter(n, "L2T-total-cache-miss") for n in names1]
+    l2t_tot1 = [h + m if (h + m) > 0 else 1 for h, m in zip(l2t_hits1, l2t_miss1)]
+    hit_rate1 = [h / t * 100 for h, t in zip(l2t_hits1, l2t_tot1)]
 
-    bars = ax1.bar(x, hit_rate, color=colors_list, edgecolor="black", linewidth=0.5)
-    for bar, val in zip(bars, hit_rate):
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
-                 f"{val:.1f}%", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
+    bars1 = axes[0, 0].bar(x1, hit_rate1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.5)
+    for bar, d, val in zip(bars1, data_p1, hit_rate1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        axes[0, 0].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+                        f"{val:.1f}%", ha="center", va="bottom", fontsize=6.5, fontweight="bold", rotation=90)
+    axes[0, 0].set_ylabel("L2T Hit Rate (%)")
+    axes[0, 0].set_title("Part 1: L2T Cache Hit Rate (Baseline to 4 MiB)", fontsize=10, fontweight="bold")
+    axes[0, 0].set_xticks(ticks1)
+    axes[0, 0].set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    axes[0, 0].set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    axes[0, 0].set_ylim(0, 108)
+    h1, _ = axes[0, 0].get_legend_handles_labels()
+    h1.extend([legend_read, legend_write])
+    axes[0, 0].legend(handles=h1, loc="lower left", fontsize=8)
 
-    ax1.set_ylabel("L2T Cache Hit Rate (%)")
-    ax1.set_title("GPU L2T Cache Hit Rate Across All Scenarios", fontsize=11)
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
-    ax1.set_ylim(0, 105)
+    miss_m1 = [m / 1e6 for m in l2t_miss1]
+    bars_m1 = axes[0, 1].bar(x1, miss_m1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.5)
+    for bar, d, val in zip(bars_m1, data_p1, miss_m1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        if val > 0.05:
+            axes[0, 1].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.1,
+                            f"{val:.1f}M", ha="center", va="bottom", fontsize=6.5, fontweight="bold", rotation=90)
+    axes[0, 1].set_ylabel("L2T Misses (M)")
+    axes[0, 1].set_title("Part 1: L2T Cache Misses (Baseline to 4 MiB)", fontsize=10, fontweight="bold")
+    axes[0, 1].set_xticks(ticks1)
+    axes[0, 1].set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    axes[0, 1].set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    h_m1, _ = axes[0, 1].get_legend_handles_labels()
+    h_m1.extend([legend_read, legend_write])
+    axes[0, 1].legend(handles=h_m1, loc="upper left", fontsize=8)
 
-    # Absolute hit/miss counts
-    bar_w = 0.35
-    ax2.bar(x - bar_w / 2, [h / 1e6 for h in l2t_hits], bar_w,
-            label="L2T Hits", color="#4CAF50", edgecolor="black", linewidth=0.5)
-    ax2.bar(x + bar_w / 2, [m / 1e6 for m in l2t_miss], bar_w,
-            label="L2T Misses", color="#F44336", edgecolor="black", linewidth=0.5)
-    ax2.set_ylabel("Count (millions)")
-    ax2.set_title("L2T Cache Hits vs Misses (absolute)", fontsize=11)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
-    ax2.legend()
+    # Row 1: Part 2
+    l2t_hits2 = [get_counter(n, "L2T-total-cache-hit") for n in names2]
+    l2t_miss2 = [get_counter(n, "L2T-total-cache-miss") for n in names2]
+    l2t_tot2 = [h + m if (h + m) > 0 else 1 for h, m in zip(l2t_hits2, l2t_miss2)]
+    hit_rate2 = [h / t * 100 for h, t in zip(l2t_hits2, l2t_tot2)]
 
-    fig.suptitle("V3D L2T Cache Behavior Across ALL Interference Parameters", fontsize=13, fontweight="bold")
+    bars2 = axes[1, 0].bar(x2, hit_rate2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.5)
+    for bar, d, val in zip(bars2, data_p2, hit_rate2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        axes[1, 0].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+                        f"{val:.1f}%", ha="center", va="bottom", fontsize=6.5, fontweight="bold", rotation=90)
+    axes[1, 0].set_ylabel("L2T Hit Rate (%)")
+    axes[1, 0].set_title("Part 2: L2T Cache Hit Rate (8 MiB to 256 MiB+)", fontsize=10, fontweight="bold")
+    axes[1, 0].set_xticks(ticks2)
+    axes[1, 0].set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    axes[1, 0].set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    axes[1, 0].set_ylim(0, 108)
+    h2, _ = axes[1, 0].get_legend_handles_labels()
+    h2.extend([legend_read, legend_write])
+    axes[1, 0].legend(handles=h2, loc="lower left", fontsize=8)
+
+    miss_m2 = [m / 1e6 for m in l2t_miss2]
+    bars_m2 = axes[1, 1].bar(x2, miss_m2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.5)
+    for bar, d, val in zip(bars_m2, data_p2, miss_m2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        if val > 0.05:
+            axes[1, 1].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.1,
+                            f"{val:.1f}M", ha="center", va="bottom", fontsize=6.5, fontweight="bold", rotation=90)
+    axes[1, 1].set_ylabel("L2T Misses (M)")
+    axes[1, 1].set_title("Part 2: L2T Cache Misses (8 MiB to 256 MiB+)", fontsize=10, fontweight="bold")
+    axes[1, 1].set_xticks(ticks2)
+    axes[1, 1].set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    axes[1, 1].set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    h_m2, _ = axes[1, 1].get_legend_handles_labels()
+    h_m2.extend([legend_read, legend_write])
+    axes[1, 1].legend(handles=h_m2, loc="upper left", fontsize=8)
+
+    fig.suptitle("V3D L2T Cache Behavior Across ALL Interference Parameters (Split: Part 1 vs Part 2)", fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_l2t_cache.png"), dpi=150)
     print(f"  → {PLOT_DIR}/v3d_mem_l2t_cache.png")
     plt.close(fig)
 
-    # ── Plot 2: Stall Cycles Breakdown (EVERY Scenario) ──────────────────
+    # ── Plot 2: Stall Cycles Breakdown (Split: Part 1 vs Part 2) ──────────────────────
     stall_counters = [
         ("TMU-stalled-cycles", "TMU Stalled"),
         ("L2T-stalls-mem", "L2T Mem Stalls"),
@@ -220,134 +265,234 @@ def main():
         ("QPU-stalls-uniforms", "QPU→Uniform Stalls"),
     ]
 
-    fig, ax = plt.subplots(figsize=(16, 6.5))
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 11))
     n_counters = len(stall_counters)
-    b_w = 0.8 / n_counters
+    b_w = bar_w / n_counters
     stall_colors = plt.cm.Set2(np.linspace(0, 1, n_counters))
 
+    # Panel 1: Part 1
     for j, (ctr, label) in enumerate(stall_counters):
-        vals = [get_counter(n, ctr) / 1e6 for n in names]
+        vals1 = [get_counter(n, ctr) / 1e6 for n in names1]
         offset = (j - n_counters / 2 + 0.5) * b_w
-        ax.bar(x + offset, vals, b_w, label=label, color=stall_colors[j],
-               edgecolor="black", linewidth=0.3)
+        ax1.bar(x1 + offset, vals1, b_w, label=label, color=stall_colors[j],
+                edgecolor="black", linewidth=0.3)
 
-    ax.set_xlabel("Interference Scenario (All Parameters)")
-    ax.set_ylabel("Stall Cycles (millions)")
-    ax.set_title("V3D Pipeline Stall Cycles Breakdown Across ALL Parameters", fontsize=12)
-    ax.set_xticks(x)
-    ax.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
-    ax.legend(fontsize=8.5, loc="upper left")
+    ax1.set_ylabel("Stall Cycles (millions)")
+    ax1.set_title("Part 1: CPU Contention & Cache Hierarchy Stressors (Baseline to 4 MiB) — V3D Pipeline Stall Cycles", fontsize=11, fontweight="bold")
+    ax1.set_xticks(ticks1)
+    ax1.set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    ax1.set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    ax1.legend(fontsize=8, loc="upper left")
+
+    # Panel 2: Part 2
+    for j, (ctr, label) in enumerate(stall_counters):
+        vals2 = [get_counter(n, ctr) / 1e6 for n in names2]
+        offset = (j - n_counters / 2 + 0.5) * b_w
+        ax2.bar(x2 + offset, vals2, b_w, label=label, color=stall_colors[j],
+                edgecolor="black", linewidth=0.3)
+
+    ax2.set_xlabel("Interference Scenario (Read/Write Bar Pairs)")
+    ax2.set_ylabel("Stall Cycles (millions)")
+    ax2.set_title("Part 2: DRAM Bandwidth, Concurrency Sweeps, Coherence & VM (8 MiB to 256 MiB+) — V3D Pipeline Stall Cycles", fontsize=11, fontweight="bold")
+    ax2.set_xticks(ticks2)
+    ax2.set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    ax2.set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    ax2.legend(fontsize=8, loc="upper left")
+
+    fig.suptitle("V3D Pipeline Stall Cycles Breakdown Across ALL Parameters (Split: Part 1 vs Part 2)", fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_stall_breakdown.png"), dpi=150)
     print(f"  → {PLOT_DIR}/v3d_mem_stall_breakdown.png")
     plt.close(fig)
 
-    # ── Plot 3: AXI Bus Wait Cycles (EVERY Scenario) ─────────────────────
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    # ── Plot 3: AXI Bus Wait Cycles (Split: Part 1 vs Part 2) ─────────────────────────
+    fig, axes = plt.subplots(2, 2, figsize=(20, 11))
 
-    axi_read_wait = [get_counter(n, "AXI-read-wait-cycles") / 1e9 for n in names]
-    axi_write_wait = [get_counter(n, "AXI-write-wait-cycles") / 1e9 for n in names]
+    # Row 0: Part 1
+    axi_r1 = [get_counter(n, "AXI-read-wait-cycles") / 1e9 for n in names1]
+    axi_w1 = [get_counter(n, "AXI-write-wait-cycles") / 1e9 for n in names1]
 
-    bar_w = 0.35
-    ax1.bar(x - bar_w / 2, axi_read_wait, bar_w, label="AXI Read Wait",
-            color="#EF5350", edgecolor="black", linewidth=0.5)
-    ax1.bar(x + bar_w / 2, axi_write_wait, bar_w, label="AXI Write Wait",
-            color="#42A5F5", edgecolor="black", linewidth=0.5)
-    ax1.set_ylabel("Wait Cycles (billions)")
-    ax1.set_title("AXI Bus Wait Cycles (All Scenarios)", fontsize=11)
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
-    ax1.legend()
+    b_ar1 = axes[0, 0].bar(x1, axi_r1, bar_w, color=colors1, edgecolor="black", linewidth=0.5)
+    for bar, d, r in zip(b_ar1, data_p1, axi_r1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        if r > 0.05:
+            axes[0, 0].text(bar.get_x() + bar.get_width() / 2, r + 0.05, f"{r:.1f}B", ha="center", va="bottom", fontsize=6.5, rotation=90)
+    axes[0, 0].set_ylabel("Wait Cycles (billions)")
+    axes[0, 0].set_title("Part 1: AXI Read Wait Cycles (Baseline to 4 MiB)", fontsize=10, fontweight="bold")
+    axes[0, 0].set_xticks(ticks1)
+    axes[0, 0].set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    axes[0, 0].set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    h_ar1, _ = axes[0, 0].get_legend_handles_labels()
+    h_ar1.extend([legend_read, legend_write])
+    axes[0, 0].legend(handles=h_ar1, loc="upper left", fontsize=8)
 
-    for i, (r, w) in enumerate(zip(axi_read_wait, axi_write_wait)):
-        if r > 0.1:
-            ax1.text(i - bar_w / 2, r + 0.1, f"{r:.1f}B", ha="center", fontsize=6.5)
-        if w > 0.1:
-            ax1.text(i + bar_w / 2, w + 0.1, f"{w:.1f}B", ha="center", fontsize=6.5)
+    b_aw1 = axes[0, 1].bar(x1, axi_w1, bar_w, color=colors1, edgecolor="black", linewidth=0.5)
+    for bar, d, w in zip(b_aw1, data_p1, axi_w1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        if w > 0.05:
+            axes[0, 1].text(bar.get_x() + bar.get_width() / 2, w + 0.05, f"{w:.1f}B", ha="center", va="bottom", fontsize=6.5, rotation=90)
+    axes[0, 1].set_ylabel("Wait Cycles (billions)")
+    axes[0, 1].set_title("Part 1: AXI Write Wait Cycles (Baseline to 4 MiB)", fontsize=10, fontweight="bold")
+    axes[0, 1].set_xticks(ticks1)
+    axes[0, 1].set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    axes[0, 1].set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    h_aw1, _ = axes[0, 1].get_legend_handles_labels()
+    h_aw1.extend([legend_read, legend_write])
+    axes[0, 1].legend(handles=h_aw1, loc="upper left", fontsize=8)
 
-    # AXI stalled transactions
-    axi_read_stall = [get_counter(n, "AXI-reads-stalled-seen-watch-0") / 1e6 for n in names]
-    axi_write_stall = [get_counter(n, "AXI-writes-stalled-seen-watch-0") / 1e6 for n in names]
+    # Row 1: Part 2
+    axi_r2 = [get_counter(n, "AXI-read-wait-cycles") / 1e9 for n in names2]
+    axi_w2 = [get_counter(n, "AXI-write-wait-cycles") / 1e9 for n in names2]
 
-    ax2.bar(x - bar_w / 2, axi_read_stall, bar_w, label="AXI Read Stalls",
-            color="#EF5350", edgecolor="black", linewidth=0.5)
-    ax2.bar(x + bar_w / 2, axi_write_stall, bar_w, label="AXI Write Stalls",
-            color="#42A5F5", edgecolor="black", linewidth=0.5)
-    ax2.set_ylabel("Stalled Transactions (millions)")
-    ax2.set_title("AXI Stalled Transactions", fontsize=11)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
-    ax2.legend()
+    b_ar2 = axes[1, 0].bar(x2, axi_r2, bar_w, color=colors2, edgecolor="black", linewidth=0.5)
+    for bar, d, r in zip(b_ar2, data_p2, axi_r2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        if r > 0.05:
+            axes[1, 0].text(bar.get_x() + bar.get_width() / 2, r + 0.05, f"{r:.1f}B", ha="center", va="bottom", fontsize=6.5, rotation=90)
+    axes[1, 0].set_ylabel("Wait Cycles (billions)")
+    axes[1, 0].set_title("Part 2: AXI Read Wait Cycles (8 MiB to 256 MiB+)", fontsize=10, fontweight="bold")
+    axes[1, 0].set_xticks(ticks2)
+    axes[1, 0].set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    axes[1, 0].set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    h_ar2, _ = axes[1, 0].get_legend_handles_labels()
+    h_ar2.extend([legend_read, legend_write])
+    axes[1, 0].legend(handles=h_ar2, loc="upper left", fontsize=8)
 
-    fig.suptitle("AXI Memory Bus Contention: Hardware Wait Cycles Across ALL Parameters",
+    b_aw2 = axes[1, 1].bar(x2, axi_w2, bar_w, color=colors2, edgecolor="black", linewidth=0.5)
+    for bar, d, w in zip(b_aw2, data_p2, axi_w2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        if w > 0.05:
+            axes[1, 1].text(bar.get_x() + bar.get_width() / 2, w + 0.05, f"{w:.1f}B", ha="center", va="bottom", fontsize=6.5, rotation=90)
+    axes[1, 1].set_ylabel("Wait Cycles (billions)")
+    axes[1, 1].set_title("Part 2: AXI Write Wait Cycles (8 MiB to 256 MiB+)", fontsize=10, fontweight="bold")
+    axes[1, 1].set_xticks(ticks2)
+    axes[1, 1].set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    axes[1, 1].set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    h_aw2, _ = axes[1, 1].get_legend_handles_labels()
+    h_aw2.extend([legend_read, legend_write])
+    axes[1, 1].legend(handles=h_aw2, loc="upper left", fontsize=8)
+
+    fig.suptitle("AXI Memory Bus Contention: Hardware Wait Cycles Across ALL Parameters (Split: Part 1 vs Part 2)",
                  fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_axi_bus.png"), dpi=150)
     print(f"  → {PLOT_DIR}/v3d_mem_axi_bus.png")
     plt.close(fig)
 
-    # ── Plot 4: QPU Cycle Breakdown (EVERY Scenario) ─────────────────────
-    fig, ax = plt.subplots(figsize=(15, 6))
+    # ── Plot 4: QPU Cycle Breakdown (Split: Part 1 vs Part 2) ─────────────────────────
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 11))
 
-    qpu_active = [get_counter(n, "QPU-active") / 1e6 for n in names]
-    qpu_stalls = [get_counter(n, "QPU-stalls") / 1e6 for n in names]
-    qpu_bubble = [get_counter(n, "QPU-wait-bubble") / 1e6 for n in names]
-    qpu_ic_miss = [get_counter(n, "QPU-ic-miss-bubble") / 1e6 for n in names]
+    # Panel 1: Part 1
+    qpu_act1 = [get_counter(n, "QPU-active") / 1e6 for n in names1]
+    qpu_stl1 = [get_counter(n, "QPU-stalls") / 1e6 for n in names1]
+    qpu_bub1 = [get_counter(n, "QPU-wait-bubble") / 1e6 for n in names1]
+    qpu_ic1 = [get_counter(n, "QPU-ic-miss-bubble") / 1e6 for n in names1]
 
-    ax.bar(x, qpu_active, 0.55, label="QPU Active", color="#4CAF50", edgecolor="black", linewidth=0.3)
-    ax.bar(x, qpu_stalls, 0.55, bottom=qpu_active, label="QPU Stalls",
-           color="#FF9800", edgecolor="black", linewidth=0.3)
-    bottom2 = [a + s for a, s in zip(qpu_active, qpu_stalls)]
-    ax.bar(x, qpu_bubble, 0.55, bottom=bottom2, label="QPU Wait Bubble",
-           color="#F44336", edgecolor="black", linewidth=0.3)
-    bottom3 = [b + w for b, w in zip(bottom2, qpu_bubble)]
-    ax.bar(x, qpu_ic_miss, 0.55, bottom=bottom3, label="QPU IC-Miss Bubble",
-           color="#9C27B0", edgecolor="black", linewidth=0.3)
+    ax1.bar(x1, qpu_act1, bar_w, label="QPU Active", color="#4CAF50", edgecolor="black", linewidth=0.3)
+    ax1.bar(x1, qpu_stl1, bar_w, bottom=qpu_act1, label="QPU Stalls", color="#FF9800", edgecolor="black", linewidth=0.3)
+    bot2_1 = [a + s for a, s in zip(qpu_act1, qpu_stl1)]
+    ax1.bar(x1, qpu_bub1, bar_w, bottom=bot2_1, label="QPU Wait Bubble", color="#F44336", edgecolor="black", linewidth=0.3)
+    bot3_1 = [b + w for b, w in zip(bot2_1, qpu_bub1)]
+    ax1.bar(x1, qpu_ic1, bar_w, bottom=bot3_1, label="QPU IC-Miss Bubble", color="#9C27B0", edgecolor="black", linewidth=0.3)
 
-    for i in range(len(names)):
-        total = qpu_active[i] + qpu_stalls[i] + qpu_bubble[i] + qpu_ic_miss[i]
+    for i in range(len(names1)):
+        total = qpu_act1[i] + qpu_stl1[i] + qpu_bub1[i] + qpu_ic1[i]
         if total > 0:
-            pct_bubble = qpu_bubble[i] / total * 100
-            ax.text(i, total + 30, f"{pct_bubble:.0f}%",
-                    ha="center", fontsize=7, fontweight="bold")
+            pct = qpu_bub1[i] / total * 100
+            ax1.text(x1[i], total + 30, f"{pct:.0f}%", ha="center", fontsize=6.5, fontweight="bold", rotation=90)
 
-    ax.set_xlabel("Interference Scenario (All Parameters)")
-    ax.set_ylabel("Cycles (millions)")
-    ax.set_title("QPU Execution Breakdown: Active vs Stalls vs Wait Bubbles Across ALL Scenarios", fontsize=12)
-    ax.set_xticks(x)
-    ax.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
-    ax.legend(loc="upper left")
+    ax1.set_ylabel("Cycles (millions)")
+    ax1.set_title("Part 1: CPU Contention & Cache Hierarchy Stressors (Baseline to 4 MiB) — QPU Execution Breakdown", fontsize=11, fontweight="bold")
+    ax1.set_xticks(ticks1)
+    ax1.set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    ax1.set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    ax1.legend(loc="upper left", fontsize=8)
+
+    # Panel 2: Part 2
+    qpu_act2 = [get_counter(n, "QPU-active") / 1e6 for n in names2]
+    qpu_stl2 = [get_counter(n, "QPU-stalls") / 1e6 for n in names2]
+    qpu_bub2 = [get_counter(n, "QPU-wait-bubble") / 1e6 for n in names2]
+    qpu_ic2 = [get_counter(n, "QPU-ic-miss-bubble") / 1e6 for n in names2]
+
+    ax2.bar(x2, qpu_act2, bar_w, label="QPU Active", color="#4CAF50", edgecolor="black", linewidth=0.3)
+    ax2.bar(x2, qpu_stl2, bar_w, bottom=qpu_act2, label="QPU Stalls", color="#FF9800", edgecolor="black", linewidth=0.3)
+    bot2_2 = [a + s for a, s in zip(qpu_act2, qpu_stl2)]
+    ax2.bar(x2, qpu_bub2, bar_w, bottom=bot2_2, label="QPU Wait Bubble", color="#F44336", edgecolor="black", linewidth=0.3)
+    bot3_2 = [b + w for b, w in zip(bot2_2, qpu_bub2)]
+    ax2.bar(x2, qpu_ic2, bar_w, bottom=bot3_2, label="QPU IC-Miss Bubble", color="#9C27B0", edgecolor="black", linewidth=0.3)
+
+    for i in range(len(names2)):
+        total = qpu_act2[i] + qpu_stl2[i] + qpu_bub2[i] + qpu_ic2[i]
+        if total > 0:
+            pct = qpu_bub2[i] / total * 100
+            ax2.text(x2[i], total + 30, f"{pct:.0f}%", ha="center", fontsize=6.5, fontweight="bold", rotation=90)
+
+    ax2.set_xlabel("Interference Scenario (Read/Write Bar Pairs)")
+    ax2.set_ylabel("Cycles (millions)")
+    ax2.set_title("Part 2: DRAM Bandwidth, Concurrency Sweeps, Coherence & VM (8 MiB to 256 MiB+) — QPU Execution Breakdown", fontsize=11, fontweight="bold")
+    ax2.set_xticks(ticks2)
+    ax2.set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    ax2.set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    ax2.legend(loc="upper left", fontsize=8)
+
+    fig.suptitle("QPU Execution Breakdown: Active vs Stalls vs Wait Bubbles (Split: Part 1 vs Part 2)", fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_qpu_breakdown.png"), dpi=150)
     print(f"  → {PLOT_DIR}/v3d_mem_qpu_breakdown.png")
     plt.close(fig)
 
-    # ── Plot 5: Memory Traffic (EVERY Scenario) ──────────────────────────
-    fig, ax = plt.subplots(figsize=(15, 6))
+    # ── Plot 5: Memory Traffic (Split: Part 1 vs Part 2) ──────────────────────────────
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 11))
+    b_sub = bar_w / 4.0
 
-    mem_reads = [get_counter(n, "core-memory-reads") / 1e6 for n in names]
-    mem_writes = [get_counter(n, "core-memory-writes") / 1e6 for n in names]
-    axi_read_trans = [get_counter(n, "AXI-read-trans") / 1e6 for n in names]
-    axi_write_trans = [get_counter(n, "AXI-write-trans") / 1e6 for n in names]
+    # Panel 1: Part 1
+    mem_r1 = [get_counter(n, "core-memory-reads") / 1e6 for n in names1]
+    mem_w1 = [get_counter(n, "core-memory-writes") / 1e6 for n in names1]
+    axi_rt1 = [get_counter(n, "AXI-read-trans") / 1e6 for n in names1]
+    axi_wt1 = [get_counter(n, "AXI-write-trans") / 1e6 for n in names1]
 
-    b_w = 0.2
-    ax.bar(x - 1.5 * b_w, mem_reads, b_w, label="Core Mem Reads", color="#1565C0", edgecolor="black", linewidth=0.3)
-    ax.bar(x - 0.5 * b_w, mem_writes, b_w, label="Core Mem Writes", color="#42A5F5", edgecolor="black", linewidth=0.3)
-    ax.bar(x + 0.5 * b_w, axi_read_trans, b_w, label="AXI Read Trans", color="#C62828", edgecolor="black", linewidth=0.3)
-    ax.bar(x + 1.5 * b_w, axi_write_trans, b_w, label="AXI Write Trans", color="#EF5350", edgecolor="black", linewidth=0.3)
+    ax1.bar(x1 - 1.5 * b_sub, mem_r1, b_sub, label="Core Mem Reads", color="#1565C0", edgecolor="black", linewidth=0.3)
+    ax1.bar(x1 - 0.5 * b_sub, mem_w1, b_sub, label="Core Mem Writes", color="#42A5F5", edgecolor="black", linewidth=0.3)
+    ax1.bar(x1 + 0.5 * b_sub, axi_rt1, b_sub, label="AXI Read Trans", color="#C62828", edgecolor="black", linewidth=0.3)
+    ax1.bar(x1 + 1.5 * b_sub, axi_wt1, b_sub, label="AXI Write Trans", color="#EF5350", edgecolor="black", linewidth=0.3)
 
-    ax.set_xlabel("Interference Scenario (All Parameters)")
-    ax.set_ylabel("Transactions (millions)")
-    ax.set_title("V3D Memory Traffic: Core & AXI Transactions Across ALL Parameters", fontsize=12)
-    ax.set_xticks(x)
-    ax.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
-    ax.legend(fontsize=9)
+    ax1.set_ylabel("Transactions (millions)")
+    ax1.set_title("Part 1: CPU Contention & Cache Hierarchy Stressors (Baseline to 4 MiB) — Core & AXI Transactions", fontsize=11, fontweight="bold")
+    ax1.set_xticks(ticks1)
+    ax1.set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    ax1.set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    ax1.legend(fontsize=8.5, loc="upper left")
+
+    # Panel 2: Part 2
+    mem_r2 = [get_counter(n, "core-memory-reads") / 1e6 for n in names2]
+    mem_w2 = [get_counter(n, "core-memory-writes") / 1e6 for n in names2]
+    axi_rt2 = [get_counter(n, "AXI-read-trans") / 1e6 for n in names2]
+    axi_wt2 = [get_counter(n, "AXI-write-trans") / 1e6 for n in names2]
+
+    ax2.bar(x2 - 1.5 * b_sub, mem_r2, b_sub, label="Core Mem Reads", color="#1565C0", edgecolor="black", linewidth=0.3)
+    ax2.bar(x2 - 0.5 * b_sub, mem_w2, b_sub, label="Core Mem Writes", color="#42A5F5", edgecolor="black", linewidth=0.3)
+    ax2.bar(x2 + 0.5 * b_sub, axi_rt2, b_sub, label="AXI Read Trans", color="#C62828", edgecolor="black", linewidth=0.3)
+    ax2.bar(x2 + 1.5 * b_sub, axi_wt2, b_sub, label="AXI Write Trans", color="#EF5350", edgecolor="black", linewidth=0.3)
+
+    ax2.set_xlabel("Interference Scenario (Read/Write Bar Pairs)")
+    ax2.set_ylabel("Transactions (millions)")
+    ax2.set_title("Part 2: DRAM Bandwidth, Concurrency Sweeps, Coherence & VM (8 MiB to 256 MiB+) — Core & AXI Transactions", fontsize=11, fontweight="bold")
+    ax2.set_xticks(ticks2)
+    ax2.set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    ax2.set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    ax2.legend(fontsize=8.5, loc="upper left")
+
+    fig.suptitle("V3D Memory Traffic: Core & AXI Transactions Across ALL Parameters (Split: Part 1 vs Part 2)", fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_traffic.png"), dpi=150)
     print(f"  → {PLOT_DIR}/v3d_mem_traffic.png")
     plt.close(fig)
 
-    # ── Plot 6: Normalized Heatmap of Key Counters (EVERY Scenario) ──────
+    # ── Plot 6: Normalized Heatmap of Key Counters (Split: Part 1 vs Part 2) ───────────
     key_counters = [
         "cycle-count", "core-active", "compute-active-cycles",
         "L2T-total-cache-hit", "L2T-total-cache-miss",
@@ -360,100 +505,165 @@ def main():
         "core-memory-reads", "core-memory-writes",
     ]
 
-    matrix = []
+    base_counters = {}
     for ctr in key_counters:
-        row = [get_counter(n, ctr) for n in names]
-        matrix.append(row)
-    matrix = np.array(matrix, dtype=float)
+        base_val = get_counter(names1[0], ctr)
+        base_counters[ctr] = base_val if base_val > 0 else 1
 
-    # Normalize each row by baseline
-    norm_matrix = np.zeros_like(matrix)
-    for i in range(matrix.shape[0]):
-        base_val = matrix[i, 0] if matrix[i, 0] > 0 else 1
-        norm_matrix[i, :] = matrix[i, :] / base_val
+    mat1 = []
+    for ctr in key_counters:
+        bv = base_counters[ctr]
+        mat1.append([get_counter(n, ctr) / bv for n in names1])
+    mat1 = np.array(mat1, dtype=float)
 
-    fig, ax = plt.subplots(figsize=(14, 10))
-    im = ax.imshow(norm_matrix, cmap="RdYlGn_r", aspect="auto", vmin=0, vmax=6)
+    mat2 = []
+    for ctr in key_counters:
+        bv = base_counters[ctr]
+        mat2.append([get_counter(n, ctr) / bv for n in names2])
+    mat2 = np.array(mat2, dtype=float)
 
-    ax.set_xticks(range(len(names)))
-    ax.set_xticklabels([nice_label(n, d["params"]).replace("\n", " ") for n, d in zip(names, data)],
-                       fontsize=8, rotation=30, ha="right")
-    ax.set_yticks(range(len(key_counters)))
-    ax.set_yticklabels(key_counters, fontsize=9)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 14))
 
+    im1 = ax1.imshow(mat1, cmap="RdYlGn_r", aspect="auto", vmin=0, vmax=6)
+    ax1.set_xticks(range(len(names1)))
+    ax1.set_xticklabels([nice_label(n, d["params"]).replace("\n", " ") for n, d in zip(names1, data_p1)],
+                        fontsize=7.5, rotation=45, ha="right")
+    ax1.set_yticks(range(len(key_counters)))
+    ax1.set_yticklabels(key_counters, fontsize=8.5)
     for i in range(len(key_counters)):
-        for j in range(len(names)):
-            val = norm_matrix[i, j]
-            text_color = "white" if val > 4 else "black"
-            ax.text(j, i, f"{val:.1f}×", ha="center", va="center",
-                    fontsize=7, color=text_color, fontweight="bold")
+        for j in range(len(names1)):
+            val = mat1[i, j]
+            tc = "white" if val > 4 else "black"
+            ax1.text(j, i, f"{val:.1f}×", ha="center", va="center", fontsize=6, color=tc, fontweight="bold")
+    ax1.set_title("Part 1: CPU Contention & Cache Hierarchy Stressors (Baseline to 4 MiB) — Normalized Counters", fontsize=11, fontweight="bold")
 
-    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+    im2 = ax2.imshow(mat2, cmap="RdYlGn_r", aspect="auto", vmin=0, vmax=6)
+    ax2.set_xticks(range(len(names2)))
+    ax2.set_xticklabels([nice_label(n, d["params"]).replace("\n", " ") for n, d in zip(names2, data_p2)],
+                        fontsize=7.5, rotation=45, ha="right")
+    ax2.set_yticks(range(len(key_counters)))
+    ax2.set_yticklabels(key_counters, fontsize=8.5)
+    for i in range(len(key_counters)):
+        for j in range(len(names2)):
+            val = mat2[i, j]
+            tc = "white" if val > 4 else "black"
+            ax2.text(j, i, f"{val:.1f}×", ha="center", va="center", fontsize=6, color=tc, fontweight="bold")
+    ax2.set_title("Part 2: DRAM Bandwidth, Concurrency Sweeps, Coherence & VM (8 MiB to 256 MiB+) — Normalized Counters", fontsize=11, fontweight="bold")
+
+    fig.subplots_adjust(right=0.91, hspace=0.35)
+    cbar_ax = fig.add_axes([0.93, 0.15, 0.015, 0.7])
+    cbar = fig.colorbar(im2, cax=cbar_ax)
     cbar.set_label("× Baseline", fontsize=10)
-    ax.set_title("V3D Hardware Counters Normalized to Baseline Across EVERY Parameter", fontsize=13)
-    plt.tight_layout()
-    fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_counter_heatmap.png"), dpi=150)
+
+    fig.suptitle("V3D Hardware Counters Normalized to Baseline Across EVERY Parameter (Split: Part 1 vs Part 2)", fontsize=13, fontweight="bold")
+    fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_counter_heatmap.png"), dpi=150, bbox_inches="tight")
     print(f"  → {PLOT_DIR}/v3d_mem_counter_heatmap.png")
     plt.close(fig)
 
-    # ── Plot 7: Hardware Contention vs Compute & E2E-GPU Residual (EVERY Scenario) ─
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6.5))
+    # ── Plot 7: Hardware Contention vs Compute & E2E-GPU Residual (Split: Part 1 vs Part 2) ─
+    fig, axes = plt.subplots(2, 2, figsize=(20, 11))
 
-    axi_waits_b = [get_counter(n, "AXI-read-wait-cycles") / 1e9 for n in names]
-    comp_lats = [d["gpu"]["compute_ms"] for d in data]
-    disp_lats = [d["gpu"]["e2e_minus_gpu_ms"] for d in data]
+    # Row 0: Part 1
+    axi_w_b1 = [get_counter(n, "AXI-read-wait-cycles") / 1e9 for n in names1]
+    comp_lats1 = [d["gpu"]["compute_ms"] for d in data_p1]
+    disp_lats1 = [d["gpu"]["e2e_minus_gpu_ms"] for d in data_p1]
 
-    # Left: Dual-Axis AXI Read Wait Cycles vs Compute Latency across all scenarios
-    ax1_twin = ax1.twinx()
-    b_axi1 = ax1.bar(x, axi_waits_b, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
-                     label="AXI Read Wait (Billions)")
-    l_c1 = ax1_twin.plot(x, comp_lats, "ro-", markersize=6.5, linewidth=1.8,
-                         label="Compute Latency (ms)")
-
-    for bar, w in zip(b_axi1, axi_waits_b):
+    # Row 0, Col 0: Part 1 AXI Read Wait vs Compute Latency
+    ax1_twin = axes[0, 0].twinx()
+    b_a1 = axes[0, 0].bar(x1, axi_w_b1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.6)
+    for bar, d in zip(b_a1, data_p1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    l_c1 = ax1_twin.plot(x1, comp_lats1, "ro-", markersize=5, linewidth=1.4)
+    for bar, w in zip(b_a1, axi_w_b1):
         if w > 0.05:
-            ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
-                     f"{w:.1f}B", ha="center", va="bottom", fontsize=7, fontweight="bold")
-
-    for i, c_lat in enumerate(comp_lats):
-        ax1_twin.text(i, c_lat + 400, f"{c_lat:.0f}", ha="center", va="bottom",
-                      fontsize=7, fontweight="bold", color="red")
-
-    ax1.set_xlabel("Interference Scenario (All Parameters)")
-    ax1.set_ylabel("AXI Read Wait Cycles (billions)", color="black")
+            axes[0, 0].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
+                            f"{w:.1f}B", ha="center", va="bottom", fontsize=6.5, fontweight="bold", rotation=90)
+    for i_x, c_lat in zip(x1, comp_lats1):
+        ax1_twin.text(i_x, c_lat + 200, f"{c_lat:.0f}", ha="center", va="bottom",
+                      fontsize=6.5, fontweight="bold", color="red", rotation=90)
+    axes[0, 0].set_ylabel("AXI Read Wait (B)")
     ax1_twin.set_ylabel("Compute Latency (ms)", color="red")
-    ax1.set_title("AXI Read Wait Cycles vs GPU Compute Latency", fontsize=11)
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
-    lines_1 = [b_axi1, l_c1[0]]
-    ax1.legend(lines_1, [l.get_label() for l in lines_1], loc="upper left", fontsize=8)
+    axes[0, 0].set_title("Part 1: AXI Read Wait vs Compute Latency (Baseline to 4 MiB)", fontsize=10, fontweight="bold")
+    axes[0, 0].set_xticks(ticks1)
+    axes[0, 0].set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    axes[0, 0].set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    axes[0, 0].legend([b_a1, l_c1[0], legend_read, legend_write], ["AXI Read Wait", "Compute Latency", "Read", "Write"], loc="upper left", fontsize=7.5)
 
-    # Right: Dual-Axis AXI Read Wait Cycles vs E2E-GPU Residual across all scenarios
-    ax2_twin = ax2.twinx()
-    b_axi2 = ax2.bar(x, axi_waits_b, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
-                     label="AXI Read Wait (Billions)")
-    l_d2 = ax2_twin.plot(x, disp_lats, "s--", color="#D84315", markersize=6.5, linewidth=1.8,
-                         label="E2E-GPU Residual (ms)")
-
-    for bar, w in zip(b_axi2, axi_waits_b):
+    # Row 0, Col 1: Part 1 AXI Read Wait vs Residual
+    ax2_twin = axes[0, 1].twinx()
+    b_a2 = axes[0, 1].bar(x1, axi_w_b1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.6)
+    for bar, d in zip(b_a2, data_p1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    l_d1 = ax2_twin.plot(x1, disp_lats1, "s--", color="#D84315", markersize=5, linewidth=1.4)
+    for bar, w in zip(b_a2, axi_w_b1):
         if w > 0.05:
-            ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
-                     f"{w:.1f}B", ha="center", va="bottom", fontsize=7, fontweight="bold")
+            axes[0, 1].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
+                            f"{w:.1f}B", ha="center", va="bottom", fontsize=6.5, fontweight="bold", rotation=90)
+    for i_x, d_lat in zip(x1, disp_lats1):
+        ax2_twin.text(i_x, d_lat + 0.08, f"{d_lat:.2f}", ha="center", va="bottom",
+                      fontsize=6.5, fontweight="bold", color="#D84315", rotation=90)
+    axes[0, 1].set_ylabel("AXI Read Wait (B)")
+    ax2_twin.set_ylabel("E2E-GPU Residual (ms)", color="#D84315")
+    axes[0, 1].set_title("Part 1: AXI Read Wait vs E2E-GPU Residual (Baseline to 4 MiB)", fontsize=10, fontweight="bold")
+    axes[0, 1].set_xticks(ticks1)
+    axes[0, 1].set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    axes[0, 1].set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    axes[0, 1].legend([b_a2, l_d1[0], legend_read, legend_write], ["AXI Read Wait", "Residual", "Read", "Write"], loc="upper left", fontsize=7.5)
 
-    for i, d_lat in enumerate(disp_lats):
-        ax2_twin.text(i, d_lat + 0.08, f"{d_lat:.2f}", ha="center", va="bottom",
-                      fontsize=7, fontweight="bold", color="#D84315")
+    # Row 1: Part 2
+    axi_w_b2 = [get_counter(n, "AXI-read-wait-cycles") / 1e9 for n in names2]
+    comp_lats2 = [d["gpu"]["compute_ms"] for d in data_p2]
+    disp_lats2 = [d["gpu"]["e2e_minus_gpu_ms"] for d in data_p2]
 
-    ax2.set_xlabel("Interference Scenario (All Parameters)")
-    ax2.set_ylabel("AXI Read Wait Cycles (billions)", color="black")
-    ax2_twin.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer", color="#D84315")
-    ax2.set_title("AXI Read Wait Cycles vs E2E-GPU Residual", fontsize=11)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(x_labels, fontsize=7.5, rotation=25, ha="right")
-    lines_2 = [b_axi2, l_d2[0]]
-    ax2.legend(lines_2, [l.get_label() for l in lines_2], loc="upper left", fontsize=8)
+    # Row 1, Col 0: Part 2 AXI Read Wait vs Compute Latency
+    ax3_twin = axes[1, 0].twinx()
+    b_a3 = axes[1, 0].bar(x2, axi_w_b2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.6)
+    for bar, d in zip(b_a3, data_p2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    l_c2 = ax3_twin.plot(x2, comp_lats2, "ro-", markersize=5, linewidth=1.4)
+    for bar, w in zip(b_a3, axi_w_b2):
+        if w > 0.05:
+            axes[1, 0].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
+                            f"{w:.1f}B", ha="center", va="bottom", fontsize=6.5, fontweight="bold", rotation=90)
+    for i_x, c_lat in zip(x2, comp_lats2):
+        ax3_twin.text(i_x, c_lat + 200, f"{c_lat:.0f}", ha="center", va="bottom",
+                      fontsize=6.5, fontweight="bold", color="red", rotation=90)
+    axes[1, 0].set_xlabel("Interference Scenario (Read/Write Bar Pairs)")
+    axes[1, 0].set_ylabel("AXI Read Wait (B)")
+    ax3_twin.set_ylabel("Compute Latency (ms)", color="red")
+    axes[1, 0].set_title("Part 2: AXI Read Wait vs Compute Latency (8 MiB to 256 MiB+)", fontsize=10, fontweight="bold")
+    axes[1, 0].set_xticks(ticks2)
+    axes[1, 0].set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    axes[1, 0].set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    axes[1, 0].legend([b_a3, l_c2[0], legend_read, legend_write], ["AXI Read Wait", "Compute Latency", "Read", "Write"], loc="upper left", fontsize=7.5)
 
-    fig.suptitle("Interconnect Contention: Impact on GPU Kernel vs E2E-GPU Residual (All Parameters)",
+    # Row 1, Col 1: Part 2 AXI Read Wait vs Residual
+    ax4_twin = axes[1, 1].twinx()
+    b_a4 = axes[1, 1].bar(x2, axi_w_b2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.6)
+    for bar, d in zip(b_a4, data_p2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    l_d2 = ax4_twin.plot(x2, disp_lats2, "s--", color="#D84315", markersize=5, linewidth=1.4)
+    for bar, w in zip(b_a4, axi_w_b2):
+        if w > 0.05:
+            axes[1, 1].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
+                            f"{w:.1f}B", ha="center", va="bottom", fontsize=6.5, fontweight="bold", rotation=90)
+    for i_x, d_lat in zip(x2, disp_lats2):
+        ax4_twin.text(i_x, d_lat + 0.08, f"{d_lat:.2f}", ha="center", va="bottom",
+                      fontsize=6.5, fontweight="bold", color="#D84315", rotation=90)
+    axes[1, 1].set_xlabel("Interference Scenario (Read/Write Bar Pairs)")
+    axes[1, 1].set_ylabel("AXI Read Wait (B)")
+    ax4_twin.set_ylabel("E2E-GPU Residual (ms)", color="#D84315")
+    axes[1, 1].set_title("Part 2: AXI Read Wait vs E2E-GPU Residual (8 MiB to 256 MiB+)", fontsize=10, fontweight="bold")
+    axes[1, 1].set_xticks(ticks2)
+    axes[1, 1].set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    axes[1, 1].set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    axes[1, 1].legend([b_a4, l_d2[0], legend_read, legend_write], ["AXI Read Wait", "Residual", "Read", "Write"], loc="upper left", fontsize=7.5)
+
+    fig.suptitle("Interconnect Contention: Impact on GPU Kernel vs E2E-GPU Residual (Split: Part 1 vs Part 2)",
                  fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "v3d_mem_hardware_vs_residual.png"), dpi=150)

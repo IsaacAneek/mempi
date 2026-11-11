@@ -38,9 +38,19 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
+from matplotlib.patches import Patch
 
 sys.path.insert(0, os.path.dirname(__file__))
-from data_loader import load_all, load_dvfs, DATA_DIR
+from data_loader import (
+    load_all,
+    load_dvfs,
+    DATA_DIR,
+    CAT_PALETTE,
+    CAT_SORT_ORDER,
+    pair_sort_key,
+    compute_pair_positions,
+    split_data_parts,
+)
 
 PLOT_DIR = os.path.join(os.path.dirname(__file__), "plots")
 os.makedirs(PLOT_DIR, exist_ok=True)
@@ -52,32 +62,6 @@ plt.rcParams.update({
     "grid.alpha": 0.3,
     "font.size": 10,
 })
-
-CAT_PALETTE = {
-    "baseline": "#4CAF50",         # Green
-    "cpu_side": "#795548",         # Brown
-    "pagefault": "#607D8B",        # Blue Grey
-    "cache_resident": "#2196F3",   # Blue
-    "l2_l3_resident": "#FF9800",   # Orange
-    "cache_evict": "#F44336",      # Red
-    "dram_stream": "#D32F2F",      # Crimson
-    "dram_random": "#9C27B0",      # Purple
-    "coherence": "#00BCD4",        # Cyan
-    "thread_sweep": "#E91E63",     # Pink
-}
-
-CAT_SORT_ORDER = {
-    "baseline": 0,
-    "cpu_side": 1,
-    "pagefault": 2,
-    "coherence": 3,
-    "cache_resident": 4,
-    "l2_l3_resident": 5,
-    "cache_evict": 6,
-    "dram_stream": 7,
-    "dram_random": 8,
-    "thread_sweep": 9,
-}
 
 
 def scenario_color(params):
@@ -114,11 +98,7 @@ def nice_label(name, params=None):
 
 
 def sort_key(d):
-    p = d["params"]
-    cat_rank = CAT_SORT_ORDER.get(p.get("category"), 99)
-    block_b = p.get("footprint_bytes", 0) or p.get("block_bytes", 0)
-    name = p.get("name", "")
-    return (cat_rank, block_b, name)
+    return pair_sort_key(d)
 
 
 def get_gpu_active_dvfs(dvfs_df):
@@ -134,8 +114,8 @@ def main():
         print("No data found!")
         return
 
-    # Sort deterministically: all scenarios included!
-    data.sort(key=sort_key)
+    # Sort deterministically: all scenarios included, with read/write counterpart pairs consecutive!
+    data.sort(key=pair_sort_key)
 
     baseline = next((d for d in data if d["params"]["category"] == "baseline" or d["params"]["name"] == "baseline"), None)
     base_e2e = baseline["gpu"]["e2e_ms"] if baseline else 4120.0
@@ -146,8 +126,20 @@ def main():
 
     names = [d["params"]["name"] for d in data]
     colors_list = [scenario_color(d["params"]) for d in data]
-    x = np.arange(len(data))
-    short_labels = [nice_label(n, d["params"]) for n, d in zip(names, data)]
+
+    # Split data into Part 1 (CPU & Cache <= 4 MiB) and Part 2 (DRAM, Sweeps, System >= 8 MiB)
+    data_p1, data_p2 = split_data_parts(data)
+
+    bar_w = 0.38
+    x1, ticks1, labels1 = compute_pair_positions(data_p1, bar_width=bar_w, pair_gap=0.06, group_gap=0.55)
+    x2, ticks2, labels2 = compute_pair_positions(data_p2, bar_width=bar_w, pair_gap=0.06, group_gap=0.55)
+
+    colors1 = [scenario_color(d["params"]) for d in data_p1]
+    colors2 = [scenario_color(d["params"]) for d in data_p2]
+
+    # Legend elements for Read vs Write distinction
+    legend_read = Patch(facecolor="#9E9E9E", edgecolor="black", label="Read (solid)")
+    legend_write = Patch(facecolor="#9E9E9E", edgecolor="black", hatch="//", label="Write (hatched //)")
 
     # ── Plot 1: DVFS Timeline per Scenario (subplots) ────────────────────
     fig, axes = plt.subplots(len(data), 1, figsize=(14, 3.2 * len(data)), sharex=False)
@@ -203,191 +195,246 @@ def main():
     print(f"  → {PLOT_DIR}/dvfs_gpu_timeline.png")
     plt.close(fig)
 
-    # ── Plot 2: V3D Clock Stability Across EVERY Scenario ────────────────
-    fig, ax = plt.subplots(figsize=(14, 5.5))
-    mean_clocks = []
-    min_clocks = []
-    max_clocks = []
+    # Helpers to extract DVFS metrics
+    def extract_dvfs_metrics(dataset):
+        mean_c, min_c, max_c = [], [], []
+        cpu_f, v3d_f, avg_t, max_t = [], [], [], []
+        comp, disp = [], []
+        for d in dataset:
+            dvfs = d["dvfs"]
+            active = get_gpu_active_dvfs(dvfs)
+            if active.empty:
+                v3d_vals = dvfs[dvfs["v3d_hz"] > 0]["v3d_hz"].values / 1e6 if not dvfs.empty else [960.0]
+                c_khz = dvfs["cpu_khz"].mean() / 1000.0 if not dvfs.empty else 2400.0
+                v_hz = dvfs["v3d_hz"].mean() / 1e6 if not dvfs.empty else 960.0
+                a_t = dvfs["temp_c"].mean() if not dvfs.empty else 50.0
+                m_t = dvfs["temp_c"].max() if not dvfs.empty else 50.0
+            else:
+                v3d_vals = active["v3d_hz"].values / 1e6
+                c_khz = active["cpu_khz"].mean() / 1000.0
+                v_hz = active["v3d_hz"].mean() / 1e6
+                a_t = active["temp_c"].mean()
+                m_t = active["temp_c"].max()
+            if len(v3d_vals) == 0:
+                v3d_vals = [960.0]
+            mean_c.append(float(np.mean(v3d_vals)))
+            min_c.append(float(np.min(v3d_vals)))
+            max_c.append(float(np.max(v3d_vals)))
+            cpu_f.append(float(c_khz))
+            v3d_f.append(float(v_hz))
+            avg_t.append(float(a_t))
+            max_t.append(float(m_t))
+            comp.append(float(d["gpu"]["compute_ms"]))
+            disp.append(float(d["gpu"]["e2e_minus_gpu_ms"]))
+        return (
+            np.array(mean_c), np.array(min_c), np.array(max_c),
+            np.array(cpu_f), np.array(v3d_f), np.array(avg_t), np.array(max_t),
+            np.array(comp), np.array(disp)
+        )
 
-    for d in data:
-        dvfs = d["dvfs"]
-        active = get_gpu_active_dvfs(dvfs)
-        if active.empty:
-            v3d_vals = dvfs[dvfs["v3d_hz"] > 0]["v3d_hz"].values / 1e6 if not dvfs.empty else [960.0]
-        else:
-            v3d_vals = active["v3d_hz"].values / 1e6
-        if len(v3d_vals) == 0:
-            v3d_vals = [960.0]
+    (mean_c1, min_c1, max_c1, cpu_f1, v3d_f1, avg_t1, max_t1, comp1, disp1) = extract_dvfs_metrics(data_p1)
+    (mean_c2, min_c2, max_c2, cpu_f2, v3d_f2, avg_t2, max_t2, comp2, disp2) = extract_dvfs_metrics(data_p2)
 
-        mean_clocks.append(float(np.mean(v3d_vals)))
-        min_clocks.append(float(np.min(v3d_vals)))
-        max_clocks.append(float(np.max(v3d_vals)))
+    # ── Plot 2: V3D Clock Stability Across EVERY Scenario (Split: Part 1 & Part 2) ─────
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 10))
 
-    yerr_lower = np.maximum(np.array(mean_clocks) - np.array(min_clocks), 0)
-    yerr_upper = np.maximum(np.array(max_clocks) - np.array(mean_clocks), 0)
-    b_clk = ax.bar(x, mean_clocks, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
-                   yerr=[yerr_lower, yerr_upper], capsize=4, error_kw=dict(lw=1.2, capthick=1.2, color="black"))
+    # Panel 1: Part 1
+    yerr_lower1 = np.maximum(mean_c1 - min_c1, 0)
+    yerr_upper1 = np.maximum(max_c1 - mean_c1, 0)
+    b_clk1 = ax1.bar(x1, mean_c1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.6,
+                     yerr=[yerr_lower1, yerr_upper1], capsize=3, error_kw=dict(lw=1.0, capthick=1.0, color="black"))
+    for bar, d, m_clk in zip(b_clk1, data_p1, mean_c1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 15,
+                 f"{m_clk:.0f}", ha="center", va="bottom", fontsize=7, fontweight="bold", rotation=90)
+    ax1.set_xticks(ticks1)
+    ax1.set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    ax1.set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
+    ax1.set_ylabel("V3D Clock (MHz)", fontsize=10)
+    ax1.set_ylim(0, 1150)
+    ax1.set_title("Part 1: CPU Contention & Cache Hierarchy Stressors (Baseline to 4 MiB) — V3D Clock Stability", fontsize=11, fontweight="bold")
+    h_clk1, _ = ax1.get_legend_handles_labels()
+    h_clk1.extend([legend_read, legend_write])
+    ax1.legend(handles=h_clk1, loc="upper left", fontsize=8)
 
-    for bar, m_clk in zip(b_clk, mean_clocks):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 15,
-                f"{m_clk:.0f} MHz", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
+    # Panel 2: Part 2
+    yerr_lower2 = np.maximum(mean_c2 - min_c2, 0)
+    yerr_upper2 = np.maximum(max_c2 - mean_c2, 0)
+    b_clk2 = ax2.bar(x2, mean_c2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.6,
+                     yerr=[yerr_lower2, yerr_upper2], capsize=3, error_kw=dict(lw=1.0, capthick=1.0, color="black"))
+    for bar, d, m_clk in zip(b_clk2, data_p2, mean_c2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 15,
+                 f"{m_clk:.0f}", ha="center", va="bottom", fontsize=7, fontweight="bold", rotation=90)
+    ax2.set_xticks(ticks2)
+    ax2.set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    ax2.set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+    ax2.set_ylabel("V3D Clock (MHz)", fontsize=10)
+    ax2.set_ylim(0, 1150)
+    ax2.set_title("Part 2: DRAM Bandwidth, Concurrency Sweeps, Coherence & Page Faults (8 MiB to 256 MiB+) — V3D Clock Stability", fontsize=11, fontweight="bold")
+    h_clk2, _ = ax2.get_legend_handles_labels()
+    h_clk2.extend([legend_read, legend_write])
+    ax2.legend(handles=h_clk2, loc="upper left", fontsize=8)
 
-    ax.set_xticks(x)
-    ax.set_xticklabels(short_labels, fontsize=7.5, rotation=25, ha="right")
-    ax.set_ylabel("V3D Clock Frequency (MHz)")
-    ax.set_ylim(0, 1150)
-    ax.set_title("V3D GPU Clock Frequency (Mean with Min-Max Range Error Bars) Across All Scenarios", fontsize=11)
+    fig.suptitle("V3D GPU Clock Frequency (Mean with Min-Max Range) (Split: Part 1 vs Part 2)", fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "dvfs_gpu_v3d_clock_dist.png"), dpi=150)
     print(f"  → {PLOT_DIR}/dvfs_gpu_v3d_clock_dist.png")
     plt.close(fig)
 
-    # ── Plot 3: Temperature vs Compute Latency and E2E-GPU Residual ──────
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6.5))
+    # ── Plot 3: Temperature vs Compute Latency and Residual (Split: Part 1 & Part 2) ──
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 11))
 
-    avg_temps = []
-    max_temps = []
-    comp_lats = [d["gpu"]["compute_ms"] for d in data]
-    disp_lats = [d["gpu"]["e2e_minus_gpu_ms"] for d in data]
-
-    for d in data:
-        dvfs = d["dvfs"]
-        active = get_gpu_active_dvfs(dvfs)
-        if active.empty and not dvfs.empty:
-            active = dvfs[dvfs["v3d_hz"] > 0]
-        if not active.empty:
-            avg_temps.append(float(active["temp_c"].mean()))
-            max_temps.append(float(active["temp_c"].max()))
-        elif not dvfs.empty:
-            avg_temps.append(float(dvfs["temp_c"].mean()))
-            max_temps.append(float(dvfs["temp_c"].max()))
-        else:
-            avg_temps.append(float(d["meta"].get("temp_before_c", 50.0)))
-            max_temps.append(float(d["meta"].get("temp_after_c", 50.0)))
-
-    temp_err_upper = np.maximum(np.array(max_temps) - np.array(avg_temps), 0)
-
-    # Left: Dual-Axis Temperature vs Compute Latency across all scenarios
+    # Panel 3a: Part 1
     ax1_twin = ax1.twinx()
-    b_t1 = ax1.bar(x, avg_temps, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
-                   yerr=[np.zeros(len(avg_temps)), temp_err_upper], capsize=3,
-                   error_kw=dict(lw=1.0, color="black"), label="Avg Temp (°C, cap=max)")
-    l_c1 = ax1_twin.plot(x, comp_lats, "ro-", markersize=6.5, linewidth=1.8, label="Compute Latency (ms)")
-
-    for bar, t_avg in zip(b_t1, avg_temps):
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1.5,
-                 f"{t_avg:.1f}°", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
-
-    for i, c_lat in enumerate(comp_lats):
-        ax1_twin.text(i, c_lat + 400, f"{c_lat:.0f}", ha="center", va="bottom",
-                      fontsize=7, fontweight="bold", color="red")
-
-    ax1.set_xlabel("Interference Scenario (All Parameters)")
-    ax1.set_ylabel("SoC Temperature (°C)", color="black")
-    ax1_twin.set_ylabel("Compute Latency (ms)", color="red")
-    ax1.set_title("Temperature vs GPU Compute Latency Across All Scenarios", fontsize=11)
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(short_labels, fontsize=7.5, rotation=25, ha="right")
+    temp_err_upper1 = np.maximum(max_t1 - avg_t1, 0)
+    b_t1 = ax1.bar(x1, avg_t1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.6,
+                   yerr=[np.zeros(len(avg_t1)), temp_err_upper1], capsize=2.5,
+                   error_kw=dict(lw=0.8, color="black"), label="Avg Temp (°C, cap=max)")
+    for bar, d in zip(b_t1, data_p1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    l_c1 = ax1_twin.plot(x1, comp1, "ro-", markersize=5.5, linewidth=1.5, label="Compute Latency (ms)")
+    l_d1 = ax1_twin.plot(x1, disp1, "s--", color="#D84315", markersize=5.5, linewidth=1.5, label="E2E-GPU Residual (ms)")
+    ax1.set_ylabel("SoC Temperature (°C)", color="black", fontsize=10)
+    ax1_twin.set_ylabel("Latency (ms)", color="black", fontsize=10)
+    ax1.set_title("Part 1: CPU Contention & Cache Hierarchy Stressors (Baseline to 4 MiB) — SoC Temp vs Latencies", fontsize=11, fontweight="bold")
+    ax1.set_xticks(ticks1)
+    ax1.set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    ax1.set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
     ax1.set_ylim(0, 95)
-    lines_1 = [b_t1, l_c1[0]]
-    ax1.legend(lines_1, [l.get_label() for l in lines_1], loc="upper left", fontsize=8)
+    lines_t1 = [b_t1, l_c1[0], l_d1[0], legend_read, legend_write]
+    ax1.legend(lines_t1, ["Avg Temp (°C)", "Compute Latency (ms)", "E2E-GPU Residual (ms)", "Read (solid)", "Write (hatched //)"], loc="upper left", fontsize=8)
 
-    # Right: Dual-Axis Temperature vs E2E-GPU Residual across all scenarios
+    # Panel 3b: Part 2
     ax2_twin = ax2.twinx()
-    b_t2 = ax2.bar(x, avg_temps, width=0.5, color=colors_list, edgecolor="black", linewidth=0.6,
-                   yerr=[np.zeros(len(avg_temps)), temp_err_upper], capsize=3,
-                   error_kw=dict(lw=1.0, color="black"), label="Avg Temp (°C, cap=max)")
-    l_d2 = ax2_twin.plot(x, disp_lats, "s--", color="#D84315", markersize=6.5, linewidth=1.8,
-                         label="E2E-GPU Residual (ms)")
-
-    for bar, t_avg in zip(b_t2, avg_temps):
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1.5,
-                 f"{t_avg:.1f}°", ha="center", va="bottom", fontsize=7.5, fontweight="bold")
-
-    for i, d_lat in enumerate(disp_lats):
-        ax2_twin.text(i, d_lat + 0.08, f"{d_lat:.2f}", ha="center", va="bottom",
-                      fontsize=7, fontweight="bold", color="#D84315")
-
-    ax2.set_xlabel("Interference Scenario (All Parameters)")
-    ax2.set_ylabel("SoC Temperature (°C)", color="black")
-    ax2_twin.set_ylabel("E2E-GPU Residual (ms) = E2E - GPU timer", color="#D84315")
-    ax2.set_title("Temperature vs E2E-GPU Residual Across All Scenarios", fontsize=11)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(short_labels, fontsize=7.5, rotation=25, ha="right")
+    temp_err_upper2 = np.maximum(max_t2 - avg_t2, 0)
+    b_t2 = ax2.bar(x2, avg_t2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.6,
+                   yerr=[np.zeros(len(avg_t2)), temp_err_upper2], capsize=2.5,
+                   error_kw=dict(lw=0.8, color="black"), label="Avg Temp (°C, cap=max)")
+    for bar, d in zip(b_t2, data_p2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    l_c2 = ax2_twin.plot(x2, comp2, "ro-", markersize=5.5, linewidth=1.5, label="Compute Latency (ms)")
+    l_d2 = ax2_twin.plot(x2, disp2, "s--", color="#D84315", markersize=5.5, linewidth=1.5, label="E2E-GPU Residual (ms)")
+    ax2.set_ylabel("SoC Temperature (°C)", color="black", fontsize=10)
+    ax2_twin.set_ylabel("Latency (ms)", color="black", fontsize=10)
+    ax2.set_title("Part 2: DRAM Bandwidth, Concurrency Sweeps, Coherence & Page Faults — SoC Temp vs Latencies", fontsize=11, fontweight="bold")
+    ax2.set_xticks(ticks2)
+    ax2.set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    ax2.set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
     ax2.set_ylim(0, 95)
-    lines_2 = [b_t2, l_d2[0]]
-    ax2.legend(lines_2, [l.get_label() for l in lines_2], loc="upper left", fontsize=8)
+    lines_t2 = [b_t2, l_c2[0], l_d2[0], legend_read, legend_write]
+    ax2.legend(lines_t2, ["Avg Temp (°C)", "Compute Latency (ms)", "E2E-GPU Residual (ms)", "Read (solid)", "Write (hatched //)"], loc="upper left", fontsize=8)
 
-    fig.suptitle("SoC Thermal State vs Compute and E2E-GPU Residuals Across All Parameters", fontsize=13, fontweight="bold")
+    fig.suptitle("SoC Thermal State vs Compute & E2E-GPU Residuals (Split: Part 1 vs Part 2)", fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "dvfs_gpu_temp_vs_latency.png"), dpi=150)
     print(f"  → {PLOT_DIR}/dvfs_gpu_temp_vs_latency.png")
     plt.close(fig)
 
-    # ── Plot 4: 5-Panel Comparative DVFS Summary Bar Chart ───────────────
-    fig, axes = plt.subplots(1, 5, figsize=(20, 5.2))
+    # ── Plot 4: 5x2 Comparative DVFS Summary Bar Chart (Split: Part 1 & Part 2) ────────
+    fig, axes = plt.subplots(5, 2, figsize=(20, 16), sharex="col")
 
+    # Column 0: Part 1
     # 4a: Avg CPU Freq
-    avg_cpu = []
-    for d in data:
-        active = get_gpu_active_dvfs(d["dvfs"])
-        if not active.empty:
-            avg_cpu.append(active["cpu_khz"].mean() / 1000)
-        elif not d["dvfs"].empty:
-            avg_cpu.append(d["dvfs"]["cpu_khz"].mean() / 1000)
-        else:
-            avg_cpu.append(2400.0)
-
-    axes[0].bar(x, avg_cpu, color=colors_list, edgecolor="black", linewidth=0.5)
-    axes[0].set_title("Avg CPU Freq\n(GPU active)", fontsize=10)
-    axes[0].set_ylabel("MHz")
-    axes[0].set_xticks(x)
-    axes[0].set_xticklabels(short_labels, fontsize=7, rotation=25, ha="right")
+    b_cpu1 = axes[0, 0].bar(x1, cpu_f1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.5)
+    for bar, d in zip(b_cpu1, data_p1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    axes[0, 0].set_title("Part 1: Avg CPU Freq (MHz) [GPU active]", fontsize=10, fontweight="bold")
+    axes[0, 0].set_ylabel("MHz")
+    axes[0, 0].set_ylim(0, 2600)
 
     # 4b: Avg V3D Freq
-    avg_v3d = []
-    for d in data:
-        active = get_gpu_active_dvfs(d["dvfs"])
-        if not active.empty:
-            avg_v3d.append(active["v3d_hz"].mean() / 1e6)
-        else:
-            v3d_active = d["dvfs"][d["dvfs"]["v3d_hz"] > 0] if not d["dvfs"].empty else pd.DataFrame()
-            avg_v3d.append(v3d_active["v3d_hz"].mean() / 1e6 if not v3d_active.empty else 960.0)
+    b_v3d1 = axes[1, 0].bar(x1, v3d_f1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.5)
+    for bar, d in zip(b_v3d1, data_p1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    axes[1, 0].set_title("Part 1: Avg V3D Clock (MHz) [GPU active]", fontsize=10, fontweight="bold")
+    axes[1, 0].set_ylabel("MHz")
+    axes[1, 0].set_ylim(0, 1150)
 
-    axes[1].bar(x, avg_v3d, color=colors_list, edgecolor="black", linewidth=0.5)
-    axes[1].set_title("Avg V3D Clock\n(GPU active)", fontsize=10)
-    axes[1].set_ylabel("MHz")
-    axes[1].set_xticks(x)
-    axes[1].set_xticklabels(short_labels, fontsize=7, rotation=25, ha="right")
-
-    # 4c: Max Temperature
-    axes[2].bar(x, max_temps, color=colors_list, edgecolor="black", linewidth=0.5)
-    axes[2].set_title("Max Temperature\n(run peak)", fontsize=10)
-    axes[2].set_ylabel("°C")
-    axes[2].set_xticks(x)
-    axes[2].set_xticklabels(short_labels, fontsize=7, rotation=25, ha="right")
-    for i, t in enumerate(max_temps):
-        axes[2].text(i, t + 0.3, f"{t:.1f}°", ha="center", fontsize=7.5)
+    # 4c: Max Temp
+    b_tmp1 = axes[2, 0].bar(x1, max_t1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.5)
+    for bar, d in zip(b_tmp1, data_p1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    axes[2, 0].set_title("Part 1: Max Temperature (°C) [peak]", fontsize=10, fontweight="bold")
+    axes[2, 0].set_ylabel("°C")
+    axes[2, 0].set_ylim(0, 95)
 
     # 4d: GPU Compute Latency
-    axes[3].bar(x, comp_lats, color=colors_list, edgecolor="black", linewidth=0.5)
-    axes[3].set_title("GPU Compute Latency\n(kernel execution)", fontsize=10)
-    axes[3].set_ylabel("ms")
-    axes[3].set_xticks(x)
-    axes[3].set_xticklabels(short_labels, fontsize=7, rotation=25, ha="right")
-    for i, v in enumerate(comp_lats):
-        axes[3].text(i, v + 200, f"{v:.0f}", ha="center", fontsize=7)
+    b_cmp1 = axes[3, 0].bar(x1, comp1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.5)
+    for bar, d in zip(b_cmp1, data_p1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    axes[3, 0].set_title("Part 1: GPU Compute Latency (ms)", fontsize=10, fontweight="bold")
+    axes[3, 0].set_ylabel("ms")
 
-    # 4e: E2E-GPU Residual = E2E - GPU timer
-    axes[4].bar(x, disp_lats, color=colors_list, edgecolor="black", linewidth=0.5)
-    axes[4].set_title("E2E-GPU Residual\n(E2E - GPU timer)", fontsize=10)
-    axes[4].set_ylabel("ms")
-    axes[4].set_xticks(x)
-    axes[4].set_xticklabels(short_labels, fontsize=7, rotation=25, ha="right")
-    for i, v in enumerate(disp_lats):
-        axes[4].text(i, v + 0.05, f"{v:.2f}", ha="center", fontsize=7.5, fontweight="bold")
+    # 4e: E2E-GPU Residual
+    b_dsp1 = axes[4, 0].bar(x1, disp1, width=bar_w, color=colors1, edgecolor="black", linewidth=0.5)
+    for bar, d, v in zip(b_dsp1, data_p1, disp1):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        axes[4, 0].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05, f"{v:.2f}", ha="center", va="bottom", fontsize=6, fontweight="bold", rotation=90)
+    axes[4, 0].set_title("Part 1: E2E-GPU Residual (ms)", fontsize=10, fontweight="bold")
+    axes[4, 0].set_ylabel("ms")
+    axes[4, 0].set_xticks(ticks1)
+    axes[4, 0].set_xticklabels(labels1, fontsize=8, rotation=45, ha="right")
+    axes[4, 0].set_xlim(x1[0] - 1.0, x1[-1] + 1.0)
 
-    fig.suptitle("DVFS State vs GPU Compute Latency vs E2E-GPU Residual Across ALL Parameters",
+    # Column 1: Part 2
+    # 4a: Avg CPU Freq
+    b_cpu2 = axes[0, 1].bar(x2, cpu_f2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.5)
+    for bar, d in zip(b_cpu2, data_p2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    axes[0, 1].set_title("Part 2: Avg CPU Freq (MHz) [GPU active]", fontsize=10, fontweight="bold")
+    axes[0, 1].set_ylabel("MHz")
+    axes[0, 1].set_ylim(0, 2600)
+
+    # 4b: Avg V3D Freq
+    b_v3d2 = axes[1, 1].bar(x2, v3d_f2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.5)
+    for bar, d in zip(b_v3d2, data_p2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    axes[1, 1].set_title("Part 2: Avg V3D Clock (MHz) [GPU active]", fontsize=10, fontweight="bold")
+    axes[1, 1].set_ylabel("MHz")
+    axes[1, 1].set_ylim(0, 1150)
+
+    # 4c: Max Temp
+    b_tmp2 = axes[2, 1].bar(x2, max_t2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.5)
+    for bar, d in zip(b_tmp2, data_p2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    axes[2, 1].set_title("Part 2: Max Temperature (°C) [peak]", fontsize=10, fontweight="bold")
+    axes[2, 1].set_ylabel("°C")
+    axes[2, 1].set_ylim(0, 95)
+
+    # 4d: GPU Compute Latency
+    b_cmp2 = axes[3, 1].bar(x2, comp2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.5)
+    for bar, d in zip(b_cmp2, data_p2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+    axes[3, 1].set_title("Part 2: GPU Compute Latency (ms)", fontsize=10, fontweight="bold")
+    axes[3, 1].set_ylabel("ms")
+
+    # 4e: E2E-GPU Residual
+    b_dsp2 = axes[4, 1].bar(x2, disp2, width=bar_w, color=colors2, edgecolor="black", linewidth=0.5)
+    for bar, d, v in zip(b_dsp2, data_p2, disp2):
+        if d["params"].get("oper") == "write":
+            bar.set_hatch("//")
+        axes[4, 1].text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05, f"{v:.2f}", ha="center", va="bottom", fontsize=6, fontweight="bold", rotation=90)
+    axes[4, 1].set_title("Part 2: E2E-GPU Residual (ms)", fontsize=10, fontweight="bold")
+    axes[4, 1].set_ylabel("ms")
+    axes[4, 1].set_xticks(ticks2)
+    axes[4, 1].set_xticklabels(labels2, fontsize=8, rotation=45, ha="right")
+    axes[4, 1].set_xlim(x2[0] - 1.0, x2[-1] + 1.0)
+
+    fig.suptitle("DVFS State vs GPU Compute Latency vs E2E-GPU Residual (Split: Part 1 vs Part 2)",
                  fontsize=13, fontweight="bold")
     plt.tight_layout()
     fig.savefig(os.path.join(PLOT_DIR, "dvfs_gpu_summary_bars.png"), dpi=150)
@@ -422,7 +469,10 @@ def main():
     print(f"{'Scenario':<14s} {'Category':<15s} {'CPU(MHz)':>10s} {'V3D(MHz)':>10s} {'MaxTemp':>8s} "
           f"{'E2E(ms)':>10s} {'Comp(ms)':>10s} {'Disp(ms)':>10s} {'CompDeg':>9s} {'DispDeg':>9s}")
     print("-" * 115)
-    for d, cpu, v3d, temp in zip(data, avg_cpu, avg_v3d, max_temps):
+    avg_cpu = np.concatenate([cpu_f1, cpu_f2])
+    avg_v3d = np.concatenate([v3d_f1, v3d_f2])
+    max_temps = np.concatenate([max_t1, max_t2])
+    for d, cpu, v3d, temp in zip(data_p1 + data_p2, avg_cpu, avg_v3d, max_temps):
         p = d["params"]
         g = d["gpu"]
         e2e = g["e2e_ms"]

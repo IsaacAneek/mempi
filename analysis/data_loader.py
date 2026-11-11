@@ -433,6 +433,153 @@ def get_active_v3d(folder):
 
 
 # ---------------------------------------------------------------------------
+# Scenario Sorting & Bar Pairing Utilities
+# ---------------------------------------------------------------------------
+
+CAT_PALETTE = {
+    "baseline": "#4CAF50",         # Green
+    "cpu_side": "#795548",         # Brown
+    "pagefault": "#607D8B",        # Blue Grey
+    "coherence": "#00BCD4",        # Cyan
+    "cache_resident": "#2196F3",   # Blue
+    "l2_l3_resident": "#FF9800",   # Orange
+    "cache_evict": "#F44336",      # Red
+    "dram_stream": "#D32F2F",      # Crimson
+    "dram_random": "#9C27B0",      # Purple
+    "thread_sweep": "#E91E63",     # Pink
+}
+
+CAT_SORT_ORDER = {
+    "baseline": 0,
+    "cpu_side": 1,
+    "cache_resident": 2,
+    "l2_l3_resident": 3,
+    "cache_evict": 4,
+    "dram_stream": 5,
+    "dram_random": 6,
+    "thread_sweep": 7,
+    "coherence": 8,
+    "pagefault": 9,
+}
+
+PART1_CATEGORIES = {"baseline", "cpu_side", "cache_resident", "l2_l3_resident", "cache_evict"}
+PART2_CATEGORIES = {"dram_stream", "dram_random", "thread_sweep", "coherence", "pagefault"}
+
+
+def split_data_parts(data):
+    """
+    Split sorted data into Part 1 (CPU & Cache hierarchy <= 4 MiB) and
+    Part 2 (DRAM, Multithreading sweeps, Coherence & Virtual memory >= 8 MiB).
+    Returns (data_part1, data_part2).
+    """
+    p1 = [d for d in data if d.get("params", d).get("category") in PART1_CATEGORIES]
+    p2 = [d for d in data if d.get("params", d).get("category") not in PART1_CATEGORIES]
+    return p1, p2
+
+
+def pair_sort_key(d):
+    """
+    Sort key ensuring read/write counterpart scenarios are grouped strictly consecutively.
+    For example: 16kr followed immediately by 16kw, 16kr_rnd by 16kw_rnd, 1mr by 1mw, etc.
+    """
+    p = d.get("params", d)
+    cat = p.get("category", "")
+    cat_rank = CAT_SORT_ORDER.get(cat, 99)
+    block_b = p.get("block_bytes", 0)
+    access = 0 if p.get("access") == "seq" else 1
+    scope = 0 if p.get("scope") == "local" else 1
+    threads = p.get("threads", 4)
+    oper = p.get("oper", "")
+    oper_rank = 0 if oper == "read" else (1 if oper == "write" else 2)
+    mode = p.get("mode", "")
+    name = p.get("name", "")
+    return (cat_rank, block_b, access, scope, threads, mode, oper_rank, name)
+
+
+def is_pair(d1, d2):
+    """Check if two consecutive scenario dicts form a Read/Write counterpart pair."""
+    p1 = d1.get("params", d1)
+    p2 = d2.get("params", d2)
+    return (p1.get("oper") == "read" and p2.get("oper") == "write" and
+            p1.get("category") == p2.get("category") and
+            p1.get("block_bytes") == p2.get("block_bytes") and
+            p1.get("access") == p2.get("access") and
+            p1.get("scope") == p2.get("scope") and
+            p1.get("threads") == p2.get("threads") and
+            p1.get("mode") == p2.get("mode"))
+
+
+def compute_pair_positions(data, bar_width=0.38, pair_gap=0.06, group_gap=0.55):
+    """
+    Compute x coordinates for plotting vertical bars such that read/write counterpart
+    scenarios (e.g., 16kr and 16kw) are rendered adjacent as a visual bar pair.
+
+    Returns:
+      bar_positions (np.ndarray): x position for each scenario in data
+      group_ticks (np.ndarray): x tick location at the center of each pair or single
+      group_labels (list[str]): label corresponding to each group tick
+    """
+    bar_positions = []
+    group_ticks = []
+    group_labels = []
+    curr_x = 0.0
+    i = 0
+    n = len(data)
+
+    while i < n:
+        if i + 1 < n and is_pair(data[i], data[i + 1]):
+            # Position Read on left, Write on right of curr_x
+            x1 = curr_x - (bar_width / 2.0 + pair_gap / 2.0)
+            x2 = curr_x + (bar_width / 2.0 + pair_gap / 2.0)
+            bar_positions.extend([x1, x2])
+            group_ticks.append(curr_x)
+
+            p = data[i]["params"]
+            acc = "rnd" if p.get("access") == "rnd" else "seq"
+            blk = p.get("block_str", "-")
+            th = f" t{p.get('threads')}" if p.get("threads") != 4 else ""
+            cat = p.get("category", "")
+            if cat == "coherence":
+                grp_lbl = f"{blk} r/w (g)"
+            elif cat == "pagefault":
+                grp_lbl = f"pf_{blk} r/w"
+            else:
+                grp_lbl = f"{blk} r/w{th}\n({acc})"
+            group_labels.append(grp_lbl)
+
+            curr_x += bar_width * 2.0 + pair_gap + group_gap
+            i += 2
+        else:
+            # Single scenario
+            bar_positions.append(curr_x)
+            group_ticks.append(curr_x)
+
+            name = data[i]["params"]["name"]
+            p = data[i]["params"]
+            cat = p.get("category", "")
+            mode = p.get("mode", "")
+            if name == "baseline":
+                grp_lbl = "baseline\n(no stress)"
+            elif cat == "cpu_side":
+                if mode == "mutex":
+                    grp_lbl = f"mutex{p.get('block_str', '1')}_t{p.get('threads', 4)}"
+                elif mode == "cpu":
+                    grp_lbl = f"cpu_prime_t{p.get('threads', 4)}"
+                elif mode == "threads":
+                    grp_lbl = f"threads_t{p.get('threads', 4)}"
+                else:
+                    grp_lbl = name
+            else:
+                grp_lbl = name
+            group_labels.append(grp_lbl)
+
+            curr_x += bar_width + group_gap
+            i += 1
+
+    return np.array(bar_positions), np.array(group_ticks), group_labels
+
+
+# ---------------------------------------------------------------------------
 # Load all scenarios at once
 # ---------------------------------------------------------------------------
 
