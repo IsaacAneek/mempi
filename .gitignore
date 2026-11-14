@@ -8,3 +8,4 @@ generate_tasks.py
 /misc
 /analysis/__pycache__
 /analysis/plots
+/hybrid/data
